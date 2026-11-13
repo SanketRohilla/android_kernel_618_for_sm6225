@@ -1,9 +1,22 @@
 #!/usr/bin/env bash
-# End-to-end build; no adb, fastboot, device writes or original-workspace access.
+# End-to-end build entry point.
 set -euo pipefail
 [ "${K618_LIMITS_VERIFIED:-}" = 1 ] || { echo 'Use bash scripts/run-limited.sh build to enforce resource limits.' >&2; exit 2; }
 . "$(dirname -- "${BASH_SOURCE[0]}")/project-env.sh"
-[ -f "$BUILD_ROOT/.xiaomi13-k618-ready" ] || { echo 'Prepare inputs with bash scripts/run-limited.sh bootstrap (or prepare for offline caches).' >&2; exit 2; }
+
+if [ "${TARGET_ARCH:-}" != "sm8550" ]; then
+  cat >&2 <<'EOF'
+SM6225 (khaje / tapas) bring-up uses staged gate scripts rather than the legacy SM8550 pipeline:
+  - Gate 1 (Platform core):        bash scripts/run-limited.sh gate1
+  - Gate 2 (Platform stack):       bash scripts/run-limited.sh gate2
+  - Gate 3 (Interconnect):         bash scripts/run-limited.sh gate3
+  - Gate 4 (First-stage modules):  bash scripts/run-limited.sh gate4
+  - Vendor expansion:              bash scripts/run-limited.sh vendor-modules
+  - Tapas media (Display + KGSL):  bash scripts/run-limited.sh tapas-media
+Refer to docs/PORTING_SM6225.md and README.md for current status and testing requirements.
+EOF
+  exit 2
+fi
 JOBS=${JOBS:-4}
 [[ "$JOBS" =~ ^[1-9][0-9]*$ ]] || { echo 'JOBS must be positive' >&2; exit 2; }
 TAG=${TAG:-release}

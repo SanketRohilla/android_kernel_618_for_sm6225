@@ -14,3 +14,4 @@ export NB="$BUILD_ROOT" K618="$BUILD_ROOT/k618"
 export MKB="$BUILD_ROOT/home/mkbootimg" LZ4_DEV="$BUILD_ROOT/lz4-dev"
 export AK3_SOURCE="$BUILD_ROOT/AnyKernel3"
 export KBUILD_GENDWARFKSYMS_STABLE=1
+export K618_INPUT_SPEC="${K618_INPUT_SPEC:-provenance/input-sources-gate1.json}"

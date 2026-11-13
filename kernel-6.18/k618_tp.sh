@@ -140,7 +140,7 @@ REPOS=(
 # once a preceding media layer passes its compile gate.
 if [ "${TAPAS_OPLUS:-0}" = 1 ]; then
 	REPOS=(
-		"display|display-drivers|DISPLAY_ROOT=%D CONFIG_ARCH_KHAJE=y|-I%T/securemsm-kernel/include -I%T/securemsm-kernel/include/linux -I%T/mm-drivers/msm_ext_display/include|-DCONFIG_ARCH_KHAJE=1"
+		"display|display-drivers|DISPLAY_ROOT=%D CONFIG_DRM_MSM=m CONFIG_ARCH_KHAJE=y|-I%T/securemsm-kernel/include -I%T/securemsm-kernel/include/linux -I%T/mm-drivers/msm_ext_display/include|-DCONFIG_ARCH_KHAJE=1 -DCONFIG_DRM_MSM=1"
 		"graphics|graphics-kernel|KGSL_PATH=%D CONFIG_ARCH_KHAJE=y CONFIG_QCOM_KGSL=m CONFIG_ARM_SMMU=m|%M|-DCONFIG_ARCH_KHAJE=1 -DCONFIG_QCOM_KGSL=1 -DCONFIG_ARM_SMMU=1"
 		"camera|camera-kernel|CAMERA_KERNEL_ROOT=%D KERNEL_ROOT=%W/common MODNAME=camera CONFIG_ARCH_KHAJE=y CONFIG_ARCH_BENGAL=y|-I%T/securemsm-kernel/include -I%T/securemsm-kernel/include/linux|-DCONFIG_ARCH_KHAJE=1 -DCONFIG_ARCH_BENGAL=1"
 		"video|video-driver|VIDEO_ROOT=%D CONFIG_ARCH_KHAJE=y|-I%T/securemsm-kernel/include -I%T/securemsm-kernel/include/linux|-DCONFIG_ARCH_KHAJE=1"
@@ -149,13 +149,11 @@ if [ "${TAPAS_OPLUS:-0}" = 1 ]; then
 		"wlan_platform|wlan/platform|WLAN_PLATFORM_ROOT=%D CONFIG_ARCH_KHAJE=y CONFIG_CNSS2=m CONFIG_CNSS_UTILS=m CONFIG_CNSS_GENL=m CONFIG_WCNSS_MEM_PRE_ALLOC=m CONFIG_CNSS2_QMI=y CONFIG_CNSS_QMI_SVC=m CONFIG_CNSS_PLAT_IPC_QMI_SVC=m CONFIG_CNSS_OUT_OF_TREE=y CONFIG_PCI_MSM=y|%R|-DCONFIG_ARCH_KHAJE=1"
 	)
 	PARKED=""
+else
+	PARKED="video eva"	# built only when named: see the table
 fi
-
-PARKED="video eva"	# built only when named: see the table
 mkdir -p $OUTM $LOG
-if [ "${TAPAS_OPLUS:-0}" != 1 ]; then
-	python3 -I $K618_DIR/k618_tp_fix.py $TP || exit 1
-fi
+python3 -I $K618_DIR/k618_tp_fix.py $TP || exit 1
 # These repos are written for 6.12 like the soc tree, so they meet the same interface changes on the
 # way to 6.18: the same sweeps run over them (namespaces as strings, .remove, timers, nth_page,
 # dma_buf_ops, pinctrl and the rest -- k618_fix618.py's own file-specific edits are keyed by

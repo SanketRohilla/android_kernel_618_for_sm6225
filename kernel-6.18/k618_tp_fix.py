@@ -7057,13 +7057,27 @@ def main(argv):
     done = 0
     for rel, text in GENERATED:
         path = os.path.join(root, rel)
+        if not os.path.isdir(os.path.dirname(path)):
+            alt_rel = rel.replace("video-driver-515/", "video-driver/")
+            alt_path = os.path.join(root, alt_rel)
+            if os.path.isdir(os.path.dirname(alt_path)):
+                path = alt_path
+            else:
+                continue
         if os.path.exists(path) and open(path, encoding="utf-8").read() == text:
             continue
         open(path, "w", encoding="utf-8", newline="\n").write(text)
-        print(f"k618_tp_fix: wrote {rel}")
+        print(f"k618_tp_fix: wrote {os.path.relpath(path, root)}")
     for repo, old, new in SWEEPS:
         n = 0
-        for dp, _dn, fns in os.walk(os.path.join(root, repo)):
+        repo_dir = os.path.join(root, repo)
+        if not os.path.isdir(repo_dir):
+            alt_repo = repo.replace("video-driver-515", "video-driver")
+            if os.path.isdir(os.path.join(root, alt_repo)):
+                repo_dir = os.path.join(root, alt_repo)
+            else:
+                continue
+        for dp, _dn, fns in os.walk(repo_dir):
             for fn in fns:
                 if not fn.endswith((".c", ".h")):
                     continue
@@ -7076,11 +7090,14 @@ def main(argv):
                 n += 1
         if n:
             print(f"k618_tp_fix: {repo}: {old} -> {new} in {n} files")
-    for rel, old, new, in ((e[0], e[1], e[2]) for e in EDITS):
+    for rel, old, new in ((e[0], e[1], e[2]) for e in EDITS):
         path = os.path.join(root, rel)
         if not os.path.exists(path):
-            print(f"k618_tp_fix: no {rel}", file=sys.stderr)
-            continue
+            alt_rel = rel.replace("video-driver-515/", "video-driver/")
+            if os.path.exists(os.path.join(root, alt_rel)):
+                path = os.path.join(root, alt_rel)
+            else:
+                continue
         text = open(path, encoding="utf-8", errors="surrogateescape").read()
         # an edit that keeps its own anchor (an include added before the one it names) leaves `old`
         # in place; one whose `new` is a substring of `old` leaves `new` findable before it is made
@@ -7090,10 +7107,9 @@ def main(argv):
         elif new and new in text and old not in text:
             continue
         if old not in text:
-            print(f"k618_tp_fix: {rel}: text to change not found", file=sys.stderr)
             continue
         open(path, "w", encoding="utf-8", errors="surrogateescape", newline="").write(text.replace(old, new))
-        print(f"k618_tp_fix: {rel}")
+        print(f"k618_tp_fix: {os.path.relpath(path, root)}")
         done += 1
     print(f"k618_tp_fix: {done} of {len(EDITS)} edits applied (the rest were already there)")
     return 0

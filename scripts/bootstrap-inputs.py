@@ -18,7 +18,7 @@ from inputlib.payload import open_ota
 
 PROJECT = Path(__file__).resolve().parents[1]
 ROOT = Path(os.environ['BUILD_ROOT']).resolve()
-SPEC_FILE = os.environ.get('K618_INPUT_SPEC') or 'provenance/input-sources.json'
+SPEC_FILE = os.environ.get('K618_INPUT_SPEC') or 'provenance/input-sources-gate1.json'
 SPEC_PATH = (PROJECT / SPEC_FILE).resolve()
 if not SPEC_PATH.is_relative_to(PROJECT):
     raise RuntimeError('K618_INPUT_SPEC must be inside the project tree')
