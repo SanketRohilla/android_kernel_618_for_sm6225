@@ -2,6 +2,8 @@ name: SM6225 OPlus display and KGSL compile
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
 
 permissions:
   contents: read
