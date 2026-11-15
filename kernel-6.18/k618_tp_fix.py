@@ -5809,8 +5809,36 @@ static int k618_set_tx_power(struct wiphy *wiphy, struct wireless_dev *wdev,
 static int k618_get_tx_power(struct wiphy *wiphy, struct wireless_dev *wdev,
 \t\t\t     int radio_idx, unsigned int link_id, int *dbm)
 {
-\treturn wlan_hdd_cfg80211_get_txpower(wiphy, wdev, link_id, dbm);
+\treturn wlan_hdd_cfg80211_get_txpower(wiphy, wdev, dbm);
 }
+
+static int k618_change_beacon(struct wiphy *wiphy, struct net_device *dev,
+\t\t\t      struct cfg80211_ap_update *info)
+{
+\treturn wlan_hdd_cfg80211_change_beacon(wiphy, dev, info ? &info->beacon : NULL);
+}
+
+#ifdef FEATURE_WLAN_TDLS
+static int k618_tdls_mgmt(struct wiphy *wiphy, struct net_device *dev,
+\t\t\t  const u8 *peer, int link_id,
+\t\t\t  u8 action_code, u8 dialog_token, u16 status_code,
+\t\t\t  u32 peer_capability, bool initiator,
+\t\t\t  const u8 *buf, size_t len)
+{
+\treturn wlan_hdd_cfg80211_tdls_mgmt(wiphy, dev, peer, action_code,
+\t\t\t\t\t   dialog_token, status_code,
+\t\t\t\t\t   peer_capability, initiator,
+\t\t\t\t\t   buf, len);
+}
+#endif
+
+#ifdef FEATURE_MONITOR_MODE_SUPPORT
+static int k618_set_monitor_channel(struct wiphy *wiphy, struct net_device *dev,
+\t\t\t\t    struct cfg80211_chan_def *chandef)
+{
+\treturn wlan_hdd_cfg80211_set_mon_ch(wiphy, chandef);
+}
+#endif
 
 static int k618_remain_on_channel(struct wiphy *wiphy,
 \t\t\t\t  struct wireless_dev *wdev,
@@ -5868,6 +5896,319 @@ EDITS += [
     ("wlan/qcacld-3.0/core/hdd/src/wlan_hdd_tx_rx.c",
      "\t\t\t\ttxq_trans_update(txq);\n",
      "\t\t\t\ttxq_trans_update(dev, txq);\n"),
+    ("wlan/qcacld-3.0/core/dp/txrx3.0/dp_txrx.h",
+     "#include <wlan_objmgr_psoc_obj.h>\n",
+     "#include <net/gro.h>\n#include <wlan_objmgr_psoc_obj.h>\n"),
+    ("wlan/qcacld-3.0/core/dp/txrx3.0/dp_txrx.h",
+     "\t\tif (napi->rx_count) {\n"
+     "\t\t\tnetif_receive_skb_list(&napi->rx_list);\n"
+     "\t\t\tqdf_init_list_head(&napi->rx_list);\n"
+     "\t\t\tnapi->rx_count = 0;\n"
+     "\t\t}",
+     "\t\tif (napi->gro.rx_count) {\n"
+     "\t\t\tnetif_receive_skb_list(&napi->gro.rx_list);\n"
+     "\t\t\tqdf_init_list_head(&napi->gro.rx_list);\n"
+     "\t\t\tnapi->gro.rx_count = 0;\n"
+     "\t\t}"),
+    ("wlan/qca-wifi-host-cmn/os_if/linux/wlan_osif_features.h",
+     "#ifndef _WLAN_OSIF_FEATURES_H_\n#define _WLAN_OSIF_FEATURES_H_\n",
+     "#ifndef _WLAN_OSIF_FEATURES_H_\n#define _WLAN_OSIF_FEATURES_H_\n#define CFG80211_SINGLE_NETDEV_MULTI_LINK_SUPPORT 1\n"),
+    ("wlan/qca-wifi-host-cmn/qdf/linux/src/i_qdf_net_if.h",
+     "\tret = init_dummy_netdev((struct net_device *)nif);\n",
+     "\tstruct net_device *dev = (struct net_device *)nif;\n"
+     "\tdev->reg_state = NETREG_DUMMY;\n"
+     "\tset_bit(__LINK_STATE_PRESENT, &dev->state);\n"
+     "\tset_bit(__LINK_STATE_START, &dev->state);\n"
+     "\tret = 0;\n"),
+    ("wlan/qca-wifi-host-cmn/os_if/linux/wlan_cfg80211.h",
+     "\tcfg80211_ch_switch_notify(dev, chandef, link_id, 0);\n",
+     "\tcfg80211_ch_switch_notify(dev, chandef, link_id);\n"),
+    ("wlan/qcacld-3.0/core/hdd/src/wlan_hdd_wmm.c",
+     "#ifdef CONFIG_ANDROID_KABI_RESERVE\n"
+     "\tif ((skb->android_kabi_reserved2 & TX_STREAM_ACCELERATE_FLAG) == TX_STREAM_ACCELERATE_FLAG) {\n"
+     "\t\t*user_pri = SME_QOS_WMM_UP_VO;\n"
+     "\t}\n"
+     "#endif\n",
+     "/* k618: android_kabi_reserved2 not in 6.18 sk_buff */\n"),
+    ("wlan/qca-wifi-host-cmn/qdf/linux/src/qdf_nbuf.c",
+     "#include <linux/skbuff.h>\n",
+     "#include <linux/skbuff.h>\n#include <linux/skbuff_ref.h>\n"),
+    ("wlan/qca-wifi-host-cmn/os_if/linux/mlme/src/osif_cm_req.c",
+     "#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)\n"
+     "static QDF_STATUS\n"
+     "osif_cm_update_wep_seq_info(struct wlan_cm_connect_req *connect_req,\n"
+     "\t\t\t    const struct cfg80211_connect_params *req)\n"
+     "{\n"
+     "\tif (req->crypto.wep_keys->seq_len) {\n",
+     "#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0) && LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0)\n"
+     "static QDF_STATUS\n"
+     "osif_cm_update_wep_seq_info(struct wlan_cm_connect_req *connect_req,\n"
+     "\t\t\t    const struct cfg80211_connect_params *req)\n"
+     "{\n"
+     "\tif (req->crypto.wep_keys->seq_len) {\n"),
+    ("wlan/qca-wifi-host-cmn/qdf/inc/osdep.h",
+     "#define qdf_sysctl_decl(f, ctl, write, filp, buffer, lenp, ppos) \\\n"
+     "\tf(struct ctl_table *ctl, int32_t write, void *buffer, \\\n"
+     "\tsize_t *lenp, loff_t *ppos)\n",
+     "#define qdf_sysctl_decl(f, ctl, write, filp, buffer, lenp, ppos) \\\n"
+     "\tf(const struct ctl_table *ctl, int32_t write, void *buffer, \\\n"
+     "\tsize_t *lenp, loff_t *ppos)\n"),
+    ("wlan/qca-wifi-host-cmn/utils/pktlog/linux_ac.c",
+     "\tstruct pktlog_dev_t *pl_dev;\n\n"
+     "\tmutex_lock(&proc_mutex);\n"
+     "\tscn = (ol_ath_generic_softc_handle) ctl->extra1;\n\n"
+     "\tif (!scn) {\n"
+     "\t\tmutex_unlock(&proc_mutex);\n"
+     "\t\tqdf_info(\"Invalid scn context\");\n"
+     "\t\tASSERT(0);\n"
+     "\t\treturn -EINVAL;\n"
+     "\t}\n\n"
+     "\tpl_dev = get_pktlog_handle();\n\n"
+     "\tif (!pl_dev) {\n"
+     "\t\tmutex_unlock(&proc_mutex);\n"
+     "\t\tqdf_info(\"Invalid pktlog context\");\n"
+     "\t\tASSERT(0);\n"
+     "\t\treturn -ENODEV;\n"
+     "\t}\n\n"
+     "\tctl->data = &enable;\n"
+     "\tctl->maxlen = sizeof(enable);\n\n"
+     "\tif (write) {\n"
+     "\t\tret = QDF_SYSCTL_PROC_DOINTVEC(ctl, write, filp, buffer,\n"
+     "\t\t\t\t\t       lenp, ppos);\n"
+     "\t\tif (ret == 0) {\n"
+     "\t\t\tret = pl_dev->pl_funcs->pktlog_enable(\n"
+     "\t\t\t\t\t(struct hif_opaque_softc *)scn, enable,\n"
+     "\t\t\t\t\tcds_is_packet_log_enabled(), 0, 1);\n"
+     "\t\t}\n"
+     "\t\telse\n"
+     "\t\t\tQDF_TRACE(QDF_MODULE_ID_SYS, QDF_TRACE_LEVEL_DEBUG,\n"
+     "\t\t\t\t  \"Line:%d %s:proc_dointvec failed reason %d\",\n"
+     "\t\t\t\t   __LINE__, __func__, ret);\n"
+     "\t} else {\n"
+     "\t\tret = QDF_SYSCTL_PROC_DOINTVEC(ctl, write, filp, buffer,\n"
+     "\t\t\t\t\t       lenp, ppos);\n"
+     "\t\tif (ret)\n"
+     "\t\t\tQDF_TRACE(QDF_MODULE_ID_SYS, QDF_TRACE_LEVEL_DEBUG,\n"
+     "\t\t\t\t  \"Line:%d %s:proc_dointvec failed reason %d\",\n"
+     "\t\t\t\t   __LINE__, __func__, ret);\n"
+     "\t}\n\n"
+     "\tctl->data = NULL;\n"
+     "\tctl->maxlen = 0;\n",
+     "\tstruct pktlog_dev_t *pl_dev;\n"
+     "\tstruct ctl_table local_ctl = *ctl;\n\n"
+     "\tmutex_lock(&proc_mutex);\n"
+     "\tscn = (ol_ath_generic_softc_handle) ctl->extra1;\n\n"
+     "\tif (!scn) {\n"
+     "\t\tmutex_unlock(&proc_mutex);\n"
+     "\t\tqdf_info(\"Invalid scn context\");\n"
+     "\t\tASSERT(0);\n"
+     "\t\treturn -EINVAL;\n"
+     "\t}\n\n"
+     "\tpl_dev = get_pktlog_handle();\n\n"
+     "\tif (!pl_dev) {\n"
+     "\t\tmutex_unlock(&proc_mutex);\n"
+     "\t\tqdf_info(\"Invalid pktlog context\");\n"
+     "\t\tASSERT(0);\n"
+     "\t\treturn -ENODEV;\n"
+     "\t}\n\n"
+     "\tlocal_ctl.data = &enable;\n"
+     "\tlocal_ctl.maxlen = sizeof(enable);\n\n"
+     "\tif (write) {\n"
+     "\t\tret = QDF_SYSCTL_PROC_DOINTVEC(&local_ctl, write, filp, buffer,\n"
+     "\t\t\t\t\t       lenp, ppos);\n"
+     "\t\tif (ret == 0) {\n"
+     "\t\t\tret = pl_dev->pl_funcs->pktlog_enable(\n"
+     "\t\t\t\t\t(struct hif_opaque_softc *)scn, enable,\n"
+     "\t\t\t\t\tcds_is_packet_log_enabled(), 0, 1);\n"
+     "\t\t}\n"
+     "\t\telse\n"
+     "\t\t\tQDF_TRACE(QDF_MODULE_ID_SYS, QDF_TRACE_LEVEL_DEBUG,\n"
+     "\t\t\t\t  \"Line:%d %s:proc_dointvec failed reason %d\",\n"
+     "\t\t\t\t   __LINE__, __func__, ret);\n"
+     "\t} else {\n"
+     "\t\tret = QDF_SYSCTL_PROC_DOINTVEC(&local_ctl, write, filp, buffer,\n"
+     "\t\t\t\t\t       lenp, ppos);\n"
+     "\t\tif (ret)\n"
+     "\t\t\tQDF_TRACE(QDF_MODULE_ID_SYS, QDF_TRACE_LEVEL_DEBUG,\n"
+     "\t\t\t\t  \"Line:%d %s:proc_dointvec failed reason %d\",\n"
+     "\t\t\t\t   __LINE__, __func__, ret);\n"
+     "\t}\n"),
+    ("wlan/qca-wifi-host-cmn/utils/pktlog/linux_ac.c",
+     "\tstruct pktlog_dev_t *pl_dev;\n\n"
+     "\tmutex_lock(&proc_mutex);\n"
+     "\tscn = (ol_ath_generic_softc_handle) ctl->extra1;\n\n"
+     "\tif (!scn) {\n"
+     "\t\tmutex_unlock(&proc_mutex);\n"
+     "\t\tqdf_info(\"Invalid scn context\");\n"
+     "\t\tASSERT(0);\n"
+     "\t\treturn -EINVAL;\n"
+     "\t}\n\n"
+     "\tpl_dev = get_pktlog_handle();\n\n"
+     "\tif (!pl_dev) {\n"
+     "\t\tmutex_unlock(&proc_mutex);\n"
+     "\t\tqdf_info(\"Invalid pktlog handle\");\n"
+     "\t\tASSERT(0);\n"
+     "\t\treturn -ENODEV;\n"
+     "\t}\n\n"
+     "\tctl->data = &size;\n"
+     "\tctl->maxlen = sizeof(size);\n\n"
+     "\tif (write) {\n"
+     "\t\tret = QDF_SYSCTL_PROC_DOINTVEC(ctl, write, filp, buffer,\n"
+     "\t\t\t\t\t       lenp, ppos);\n"
+     "\t\tif (ret == 0)\n"
+     "\t\t\tret = pl_dev->pl_funcs->pktlog_setsize(\n"
+     "\t\t\t\t\t(struct hif_opaque_softc *)scn, size);\n"
+     "\t} else {\n"
+     "\t\tsize = get_pktlog_bufsize(pl_dev);\n"
+     "\t\tret = QDF_SYSCTL_PROC_DOINTVEC(ctl, write, filp, buffer,\n"
+     "\t\t\t\t\t       lenp, ppos);\n"
+     "\t}\n\n"
+     "\tctl->data = NULL;\n"
+     "\tctl->maxlen = 0;\n",
+     "\tstruct pktlog_dev_t *pl_dev;\n"
+     "\tstruct ctl_table local_ctl = *ctl;\n\n"
+     "\tmutex_lock(&proc_mutex);\n"
+     "\tscn = (ol_ath_generic_softc_handle) ctl->extra1;\n\n"
+     "\tif (!scn) {\n"
+     "\t\tmutex_unlock(&proc_mutex);\n"
+     "\t\tqdf_info(\"Invalid scn context\");\n"
+     "\t\tASSERT(0);\n"
+     "\t\treturn -EINVAL;\n"
+     "\t}\n\n"
+     "\tpl_dev = get_pktlog_handle();\n\n"
+     "\tif (!pl_dev) {\n"
+     "\t\tmutex_unlock(&proc_mutex);\n"
+     "\t\tqdf_info(\"Invalid pktlog handle\");\n"
+     "\t\tASSERT(0);\n"
+     "\t\treturn -ENODEV;\n"
+     "\t}\n\n"
+     "\tlocal_ctl.data = &size;\n"
+     "\tlocal_ctl.maxlen = sizeof(size);\n\n"
+     "\tif (write) {\n"
+     "\t\tret = QDF_SYSCTL_PROC_DOINTVEC(&local_ctl, write, filp, buffer,\n"
+     "\t\t\t\t\t       lenp, ppos);\n"
+     "\t\tif (ret == 0) {\n"
+     "\t\t\tret = pl_dev->pl_funcs->pktlog_setsize(\n"
+     "\t\t\t\t\t(struct hif_opaque_softc *)scn, size);\n"
+     "\t\t}\n"
+     "\t} else {\n"
+     "\t\tsize = get_pktlog_bufsize(pl_dev);\n"
+     "\t\tret = QDF_SYSCTL_PROC_DOINTVEC(&local_ctl, write, filp, buffer,\n"
+     "\t\t\t\t\t       lenp, ppos);\n"
+     "\t}\n"),
+    ("wlan/qca-wifi-host-cmn/utils/pktlog/linux_ac.c",
+     "\tmemset(pl_info_lnx->sysctls, 0, sizeof(pl_info_lnx->sysctls));\n"
+     "\tpl_info_lnx->sysctls[0].procname = PKTLOG_PROC_DIR;\n"
+     "\tpl_info_lnx->sysctls[0].mode = PKTLOG_PROCSYS_DIR_PERM;\n"
+     "\tpl_info_lnx->sysctls[0].child = &pl_info_lnx->sysctls[2];\n\n"
+     "\t/* [1] is NULL terminator */\n"
+     "\tpl_info_lnx->sysctls[2].procname = proc_name;\n"
+     "\tpl_info_lnx->sysctls[2].mode = PKTLOG_PROCSYS_DIR_PERM;\n"
+     "\tpl_info_lnx->sysctls[2].child = &pl_info_lnx->sysctls[4];\n\n"
+     "\t/* [3] is NULL terminator */\n"
+     "\tpl_info_lnx->sysctls[4].procname = \"enable\";\n"
+     "\tpl_info_lnx->sysctls[4].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[4].proc_handler = ath_sysctl_pktlog_enable;\n"
+     "\tpl_info_lnx->sysctls[4].extra1 = scn;\n\n"
+     "\tpl_info_lnx->sysctls[5].procname = \"size\";\n"
+     "\tpl_info_lnx->sysctls[5].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[5].proc_handler = ath_sysctl_pktlog_size;\n"
+     "\tpl_info_lnx->sysctls[5].extra1 = scn;\n\n"
+     "\tpl_info_lnx->sysctls[6].procname = \"options\";\n"
+     "\tpl_info_lnx->sysctls[6].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[6].proc_handler = proc_dointvec;\n"
+     "\tpl_info_lnx->sysctls[6].data = &pl_info_lnx->info.options;\n"
+     "\tpl_info_lnx->sysctls[6].maxlen = sizeof(pl_info_lnx->info.options);\n\n"
+     "\tpl_info_lnx->sysctls[7].procname = \"sack_thr\";\n"
+     "\tpl_info_lnx->sysctls[7].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[7].proc_handler = proc_dointvec;\n"
+     "\tpl_info_lnx->sysctls[7].data = &pl_info_lnx->info.sack_thr;\n"
+     "\tpl_info_lnx->sysctls[7].maxlen = sizeof(pl_info_lnx->info.sack_thr);\n\n"
+     "\tpl_info_lnx->sysctls[8].procname = \"tail_length\";\n"
+     "\tpl_info_lnx->sysctls[8].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[8].proc_handler = proc_dointvec;\n"
+     "\tpl_info_lnx->sysctls[8].data = &pl_info_lnx->info.tail_length;\n"
+     "\tpl_info_lnx->sysctls[8].maxlen = sizeof(pl_info_lnx->info.tail_length);\n\n"
+     "\tpl_info_lnx->sysctls[9].procname = \"thruput_thresh\";\n"
+     "\tpl_info_lnx->sysctls[9].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[9].proc_handler = proc_dointvec;\n"
+     "\tpl_info_lnx->sysctls[9].data = &pl_info_lnx->info.thruput_thresh;\n"
+     "\tpl_info_lnx->sysctls[9].maxlen =\n"
+     "\t\tsizeof(pl_info_lnx->info.thruput_thresh);\n\n"
+     "\tpl_info_lnx->sysctls[10].procname = \"phyerr_thresh\";\n"
+     "\tpl_info_lnx->sysctls[10].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[10].proc_handler = proc_dointvec;\n"
+     "\tpl_info_lnx->sysctls[10].data = &pl_info_lnx->info.phyerr_thresh;\n"
+     "\tpl_info_lnx->sysctls[10].maxlen =\n"
+     "\t\tsizeof(pl_info_lnx->info.phyerr_thresh);\n\n"
+     "\tpl_info_lnx->sysctls[11].procname = \"per_thresh\";\n"
+     "\tpl_info_lnx->sysctls[11].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[11].proc_handler = proc_dointvec;\n"
+     "\tpl_info_lnx->sysctls[11].data = &pl_info_lnx->info.per_thresh;\n"
+     "\tpl_info_lnx->sysctls[11].maxlen = sizeof(pl_info_lnx->info.per_thresh);\n\n"
+     "\tpl_info_lnx->sysctls[12].procname = \"trigger_interval\";\n"
+     "\tpl_info_lnx->sysctls[12].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[12].proc_handler = proc_dointvec;\n"
+     "\tpl_info_lnx->sysctls[12].data = &pl_info_lnx->info.trigger_interval;\n"
+     "\tpl_info_lnx->sysctls[12].maxlen =\n"
+     "\t\tsizeof(pl_info_lnx->info.trigger_interval);\n"
+     "\t/* [13] is NULL terminator */\n\n"
+     "\t/* and register everything */\n"
+     "\t/* register_sysctl_table changed from 2.6.21 onwards */\n"
+     "\tpl_info_lnx->sysctl_header =\n"
+     "\t\tregister_sysctl_table(pl_info_lnx->sysctls);\n",
+     "\tchar path[128];\n"
+     "\tsnprintf(path, sizeof(path), \"%s/%s\", PKTLOG_PROC_DIR, proc_name);\n"
+     "\tmemset(pl_info_lnx->sysctls, 0, sizeof(pl_info_lnx->sysctls));\n\n"
+     "\tpl_info_lnx->sysctls[0].procname = \"enable\";\n"
+     "\tpl_info_lnx->sysctls[0].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[0].proc_handler = ath_sysctl_pktlog_enable;\n"
+     "\tpl_info_lnx->sysctls[0].extra1 = scn;\n\n"
+     "\tpl_info_lnx->sysctls[1].procname = \"size\";\n"
+     "\tpl_info_lnx->sysctls[1].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[1].proc_handler = ath_sysctl_pktlog_size;\n"
+     "\tpl_info_lnx->sysctls[1].extra1 = scn;\n\n"
+     "\tpl_info_lnx->sysctls[2].procname = \"options\";\n"
+     "\tpl_info_lnx->sysctls[2].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[2].proc_handler = proc_dointvec;\n"
+     "\tpl_info_lnx->sysctls[2].data = &pl_info_lnx->info.options;\n"
+     "\tpl_info_lnx->sysctls[2].maxlen = sizeof(pl_info_lnx->info.options);\n\n"
+     "\tpl_info_lnx->sysctls[3].procname = \"sack_thr\";\n"
+     "\tpl_info_lnx->sysctls[3].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[3].proc_handler = proc_dointvec;\n"
+     "\tpl_info_lnx->sysctls[3].data = &pl_info_lnx->info.sack_thr;\n"
+     "\tpl_info_lnx->sysctls[3].maxlen = sizeof(pl_info_lnx->info.sack_thr);\n\n"
+     "\tpl_info_lnx->sysctls[4].procname = \"tail_length\";\n"
+     "\tpl_info_lnx->sysctls[4].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[4].proc_handler = proc_dointvec;\n"
+     "\tpl_info_lnx->sysctls[4].data = &pl_info_lnx->info.tail_length;\n"
+     "\tpl_info_lnx->sysctls[4].maxlen = sizeof(pl_info_lnx->info.tail_length);\n\n"
+     "\tpl_info_lnx->sysctls[5].procname = \"thruput_thresh\";\n"
+     "\tpl_info_lnx->sysctls[5].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[5].proc_handler = proc_dointvec;\n"
+     "\tpl_info_lnx->sysctls[5].data = &pl_info_lnx->info.thruput_thresh;\n"
+     "\tpl_info_lnx->sysctls[5].maxlen =\n"
+     "\t\tsizeof(pl_info_lnx->info.thruput_thresh);\n\n"
+     "\tpl_info_lnx->sysctls[6].procname = \"phyerr_thresh\";\n"
+     "\tpl_info_lnx->sysctls[6].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[6].proc_handler = proc_dointvec;\n"
+     "\tpl_info_lnx->sysctls[6].data = &pl_info_lnx->info.phyerr_thresh;\n"
+     "\tpl_info_lnx->sysctls[6].maxlen =\n"
+     "\t\tsizeof(pl_info_lnx->info.phyerr_thresh);\n\n"
+     "\tpl_info_lnx->sysctls[7].procname = \"per_thresh\";\n"
+     "\tpl_info_lnx->sysctls[7].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[7].proc_handler = proc_dointvec;\n"
+     "\tpl_info_lnx->sysctls[7].data = &pl_info_lnx->info.per_thresh;\n"
+     "\tpl_info_lnx->sysctls[7].maxlen = sizeof(pl_info_lnx->info.per_thresh);\n\n"
+     "\tpl_info_lnx->sysctls[8].procname = \"trigger_interval\";\n"
+     "\tpl_info_lnx->sysctls[8].mode = PKTLOG_PROCSYS_PERM;\n"
+     "\tpl_info_lnx->sysctls[8].proc_handler = proc_dointvec;\n"
+     "\tpl_info_lnx->sysctls[8].data = &pl_info_lnx->info.trigger_interval;\n"
+     "\tpl_info_lnx->sysctls[8].maxlen =\n"
+     "\t\tsizeof(pl_info_lnx->info.trigger_interval);\n"
+     "\t/* [9] is NULL terminator */\n\n"
+     "\tpl_info_lnx->sysctl_header =\n"
+     "\t\tregister_sysctl_sz(path, pl_info_lnx->sysctls, 9);\n"),
 ]
 
 
@@ -7560,6 +7901,9 @@ EDITS += [
         ("add_station", "wlan_hdd_cfg80211_add_station", "add_station"),
         ("set_antenna", "wlan_hdd_cfg80211_set_chainmask", "set_antenna"),
         ("get_antenna", "wlan_hdd_cfg80211_get_chainmask", "get_antenna"),
+        ("change_beacon", "wlan_hdd_cfg80211_change_beacon", "change_beacon"),
+        ("tdls_mgmt", "wlan_hdd_cfg80211_tdls_mgmt", "tdls_mgmt"),
+        ("set_monitor_channel", "wlan_hdd_cfg80211_set_mon_ch", "set_monitor_channel"),
     ]
 ] + [
     (WLAN_CFG80211_C, "\t.assoc_ml_reconf =\n\t\twlan_hdd_cfg80211_setup_link_reconfig,\n",

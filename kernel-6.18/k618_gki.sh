@@ -169,7 +169,7 @@ $M gki_defconfig > $O/../gki-config.log 2>&1
 # STM's basic protocol. gki_defconfig has none of them; they are plain modules, so this only adds.
 GKI_MODS="MTD MTD_BLKDEVS MTD_BLOCK MTD_OOPS MTD_BLOCK2MTD MTD_OF_PARTS QCOM_PMIC_GLINK
 	  UCSI_PMIC_GLINK USB_EHSET_TEST_FIXTURE IR_SPI IIO_BUFFER_CB STM_PROTO_BASIC
-	  SPI_SPIDEV CPU_FREQ_GOV_USERSPACE CPU_FREQ_GOV_ONDEMAND LEDS_GPIO"
+	  SPI_SPIDEV CPU_FREQ_GOV_USERSPACE CPU_FREQ_GOV_ONDEMAND LEDS_GPIO CFG80211"
 $W/common/scripts/config --file $O/.config $(for c in $GKI_MODS; do echo -n " -m $c"; done)
 $W/common/scripts/config --file $O/.config -e KSU
 # Enable the ten SUSFS features selected by this integration.
