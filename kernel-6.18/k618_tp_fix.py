@@ -391,6 +391,100 @@ EDITS = [
     ("bt-kernel/slimbus/btfm_slim_codec.c",
      "#include <linux/init.h>\n",
      "#include <linux/version.h>\n#include <linux/init.h>\n"),
+    ("bt-kernel/slimbus/btfm_slim_codec.c",
+     "static int btfm_slim_dai_set_channel_map(struct snd_soc_dai *dai,\n\t\t\t\tunsigned int tx_num, unsigned int *tx_slot,\n\t\t\t\tunsigned int rx_num, unsigned int *rx_slot)",
+     "static int btfm_slim_dai_set_channel_map(struct snd_soc_dai *dai,\n\t\t\t\tunsigned int tx_num, const unsigned int *tx_slot,\n\t\t\t\tunsigned int rx_num, const unsigned int *rx_slot)"),
+    ("bt-kernel/slimbus/btfm_slim_codec.c",
+     "static int btfm_slim_dai_get_channel_map(struct snd_soc_dai *dai,\n\t\t\t\t unsigned int *tx_num, unsigned int *tx_slot,\n\t\t\t\t unsigned int *rx_num, unsigned int *rx_slot)",
+     "static int btfm_slim_dai_get_channel_map(const struct snd_soc_dai *dai,\n\t\t\t\t unsigned int *tx_num, unsigned int *tx_slot,\n\t\t\t\t unsigned int *rx_num, unsigned int *rx_slot)"),
+    ("bt-kernel/slimbus/btfm_slim.c",
+     "\t{\n\t.manf_id = SLIM_MANF_ID_QCOM,\n\t.prod_code = 0x220,\n\t.dev_index = 0x1,\n\t.instance = 0x0,\n\t}\n};",
+     "\t{\n\t.manf_id = SLIM_MANF_ID_QCOM,\n\t.prod_code = 0x220,\n\t.dev_index = 0x1,\n\t.instance = 0x0,\n\t},\n\t{}\n};"),
+    ("bt-kernel/pwr/btpower.c",
+     "static int bt_power_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tdev_dbg(&pdev->dev, \"%s\\n\", __func__);\n\n"
+     "\tprobe_finished = false;\n"
+     "\tbtpower_rfkill_remove(pdev);\n"
+     "\tbt_power_vreg_put();\n\n"
+     "\tkfree(bt_power_pdata);\n\n"
+     "\treturn 0;\n"
+     "}",
+     "static void bt_power_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tdev_dbg(&pdev->dev, \"%s\\n\", __func__);\n\n"
+     "\tprobe_finished = false;\n"
+     "\tbtpower_rfkill_remove(pdev);\n"
+     "\tbt_power_vreg_put();\n\n"
+     "\tkfree(bt_power_pdata);\n"
+     "}"),
+    ("bt-kernel/rtc6226/radio-rtc6226-i2c.c",
+     "static int rtc6226_i2c_probe(struct i2c_client *client,\n\tconst struct i2c_device_id *id)",
+     "static int rtc6226_i2c_probe(struct i2c_client *client)"),
+    ("bt-kernel/rtc6226/radio-rtc6226-i2c.c",
+     "static int rtc6226_i2c_remove(struct i2c_client *client)\n{\n\tstruct rtc6226_device *radio = i2c_get_clientdata(client);\n\n\tfree_irq(client->irq, radio);\n\tkfree(radio->buffer);\n\tv4l2_ctrl_handler_free(&radio->ctrl_handler);\n\tif (video_is_registered(&radio->videodev))\n\t\tvideo_unregister_device(&radio->videodev);\n\tvideo_device_release_empty(&radio->videodev);\n\tv4l2_device_unregister(&radio->v4l2_dev);\n\tkfree(radio);\n\tFMDBG(\"%s exit\\n\", __func__);\n\n\treturn 0;\n}",
+     "static void rtc6226_i2c_remove(struct i2c_client *client)\n{\n\tstruct rtc6226_device *radio = i2c_get_clientdata(client);\n\n\tfree_irq(client->irq, radio);\n\tkfree(radio->buffer);\n\tv4l2_ctrl_handler_free(&radio->ctrl_handler);\n\tif (video_is_registered(&radio->videodev))\n\t\tvideo_unregister_device(&radio->videodev);\n\tvideo_device_release_empty(&radio->videodev);\n\tv4l2_device_unregister(&radio->v4l2_dev);\n\tkfree(radio);\n\tFMDBG(\"%s exit\\n\", __func__);\n}"),
+    ("bt-kernel/rtc6226/radio-rtc6226-common.c",
+     "/* static */\n"
+     "const struct v4l2_ioctl_ops rtc6226_ioctl_ops = {\n"
+     "\t.vidioc_querycap            =   rtc6226_vidioc_querycap,\n"
+     "\t.vidioc_g_audio             =   rtc6226_vidioc_g_audio,\n"
+     "\t.vidioc_g_tuner             =   rtc6226_vidioc_g_tuner,\n"
+     "\t.vidioc_s_tuner             =   rtc6226_vidioc_s_tuner,\n"
+     "\t.vidioc_g_ctrl              =   rtc6226_vidioc_g_ctrl,\n"
+     "\t.vidioc_s_ctrl              =   rtc6226_vidioc_s_ctrl,\n"
+     "\t.vidioc_g_frequency         =   rtc6226_vidioc_g_frequency,\n"
+     "\t.vidioc_s_frequency         =   rtc6226_vidioc_s_frequency,\n"
+     "\t.vidioc_s_hw_freq_seek      =   rtc6226_vidioc_s_hw_freq_seek,\n"
+     "\t.vidioc_dqbuf               =   rtc6226_vidioc_dqbuf,\n"
+     "};",
+     "static int rtc6226_vidioc_g_ext_ctrls(struct file *file, void *fh,\n"
+     "\t\t\t\t      struct v4l2_ext_controls *c)\n"
+     "{\n"
+     "\tint i, ret = 0;\n"
+     "\tfor (i = 0; i < c->count; i++) {\n"
+     "\t\tstruct v4l2_control ctrl;\n"
+     "\t\tctrl.id = c->controls[i].id;\n"
+     "\t\tctrl.value = c->controls[i].value;\n"
+     "\t\tret = rtc6226_vidioc_g_ctrl(file, fh, &ctrl);\n"
+     "\t\tif (ret) {\n"
+     "\t\t\tc->error_idx = i;\n"
+     "\t\t\treturn ret;\n"
+     "\t\t}\n"
+     "\t\tc->controls[i].value = ctrl.value;\n"
+     "\t}\n"
+     "\treturn 0;\n"
+     "}\n\n"
+     "static int rtc6226_vidioc_s_ext_ctrls(struct file *file, void *fh,\n"
+     "\t\t\t\t      struct v4l2_ext_controls *c)\n"
+     "{\n"
+     "\tint i, ret = 0;\n"
+     "\tfor (i = 0; i < c->count; i++) {\n"
+     "\t\tstruct v4l2_control ctrl;\n"
+     "\t\tctrl.id = c->controls[i].id;\n"
+     "\t\tctrl.value = c->controls[i].value;\n"
+     "\t\tret = rtc6226_vidioc_s_ctrl(file, fh, &ctrl);\n"
+     "\t\tif (ret) {\n"
+     "\t\t\tc->error_idx = i;\n"
+     "\t\t\treturn ret;\n"
+     "\t\t}\n"
+     "\t\tc->controls[i].value = ctrl.value;\n"
+     "\t}\n"
+     "\treturn 0;\n"
+     "}\n\n"
+     "/* static */\n"
+     "const struct v4l2_ioctl_ops rtc6226_ioctl_ops = {\n"
+     "\t.vidioc_querycap            =   rtc6226_vidioc_querycap,\n"
+     "\t.vidioc_g_audio             =   rtc6226_vidioc_g_audio,\n"
+     "\t.vidioc_g_tuner             =   rtc6226_vidioc_g_tuner,\n"
+     "\t.vidioc_s_tuner             =   rtc6226_vidioc_s_tuner,\n"
+     "\t.vidioc_g_ext_ctrls         =   rtc6226_vidioc_g_ext_ctrls,\n"
+     "\t.vidioc_s_ext_ctrls         =   rtc6226_vidioc_s_ext_ctrls,\n"
+     "\t.vidioc_g_frequency         =   rtc6226_vidioc_g_frequency,\n"
+     "\t.vidioc_s_frequency         =   rtc6226_vidioc_s_frequency,\n"
+     "\t.vidioc_s_hw_freq_seek      =   rtc6226_vidioc_s_hw_freq_seek,\n"
+     "\t.vidioc_dqbuf               =   rtc6226_vidioc_dqbuf,\n"
+     "};"),
     # cnss2's pci.c defines cnss_pci_get_link_status from generic PCIe calls, unguarded, while
     # pci_platform.h also defines it as a stub when CONFIG_PCI_MSM is off (this phone has no
     # pci-msm-drv) -- a duplicate. The real one is the generic code, so drop the stub
@@ -404,6 +498,12 @@ EDITS = [
     ("wlan/platform/cnss2/pci_qcom_ecam.c",
      "#include \"pci_platform.h\"\n",
      "#include <linux/of_address.h>\n#include \"pci_platform.h\"\n"),
+    ("wlan/platform/icnss2/main.c",
+     "static int icnss_remove(struct platform_device *pdev)",
+     "static void icnss_remove(struct platform_device *pdev)"),
+    ("wlan/platform/icnss2/main.c",
+     "\tdev_set_drvdata(&pdev->dev, NULL);\n\n\treturn 0;\n}",
+     "\tdev_set_drvdata(&pdev->dev, NULL);\n}"),
 
 
     ("bt-kernel/pwr/btpower.c",
@@ -7565,6 +7665,7 @@ SWEEPS = [
     # the same value. (The same two reads exist in btfmcodec and soundwire, which kalama does not
     # build; the sweep covers them for the day they are turned on.)
     ("bt-kernel", "dai->rate", "dai->symmetric_rate"),
+    ("bt-kernel", "#include <asm/unaligned.h>", "#include <linux/unaligned.h>"),
     # 6.18 has no pfn_t at all (upstream deleted the type and its header) and vmf_insert_mixed()
     # takes a plain pfn -- which is all this call ever carried (PFN_DEV meant nothing for it)
     ("display-drivers", "#include <linux/pfn_t.h>\n", ""),
