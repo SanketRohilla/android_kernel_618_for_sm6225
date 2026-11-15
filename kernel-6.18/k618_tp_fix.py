@@ -8502,6 +8502,7 @@ def main(argv):
     print(f"k618_tp_fix: {done} of {len(EDITS)} edits applied (the rest were already there)")
     apply_sm6225_media_fixes(Path(root))
     apply_sm6225_camera_fixes(Path(root))
+    apply_sm6225_securemsm_fixes(Path(root))
     return 0
 
 
@@ -9035,6 +9036,80 @@ def apply_sm6225_camera_fixes(tp_root: Path) -> None:
                 )
                 cam_eeprom.write_text(src, encoding="utf-8")
                 print("k618_tp_fix: camera-kernel/drivers/cam_sensor_module/cam_eeprom/cam_eeprom_dev.c (oplus qvga guard)")
+
+
+def apply_sm6225_securemsm_fixes(tp_root: Path) -> None:
+    # 1. qseecom: prototype fix & DMA_BUF namespace import
+    qsee = tp_root / "securemsm-kernel/qseecom/qseecom.c"
+    if qsee.is_file():
+        src = qsee.read_text(encoding="utf-8", errors="ignore")
+        modified = False
+        if "static int qseecom_register_reboot_notifier()" in src:
+            src = src.replace("static int qseecom_register_reboot_notifier()", "static int qseecom_register_reboot_notifier(void)")
+            modified = True
+        if 'MODULE_IMPORT_NS("DMA_BUF");' not in src:
+            src += '\nMODULE_IMPORT_NS("DMA_BUF");\n'
+            modified = True
+        if modified:
+            qsee.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: securemsm-kernel/qseecom/qseecom.c (prototype & DMA_BUF)")
+
+    # 2. smcinvoke: VFS & DMA_BUF namespace import
+    smc = tp_root / "securemsm-kernel/smcinvoke/smcinvoke.c"
+    if smc.is_file():
+        src = smc.read_text(encoding="utf-8", errors="ignore")
+        modified = False
+        if 'MODULE_IMPORT_NS("VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");' in src:
+            src = src.replace(
+                'MODULE_IMPORT_NS("VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");',
+                'MODULE_IMPORT_NS("ANDROID_GKI_VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");\nMODULE_IMPORT_NS("DMA_BUF");',
+            )
+            modified = True
+        elif 'MODULE_IMPORT_NS("ANDROID_GKI_VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");' in src and 'MODULE_IMPORT_NS("DMA_BUF");' not in src:
+            src += '\nMODULE_IMPORT_NS("DMA_BUF");\n'
+            modified = True
+        if modified:
+            smc.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: securemsm-kernel/smcinvoke/smcinvoke.c (VFS & DMA_BUF)")
+
+    # 3. sec-kernel_defconfig.conf: SM6225 uses standard qseecom without proxy or qce50
+    sec_conf = tp_root / "securemsm-kernel/config/sec-kernel_defconfig.conf"
+    if sec_conf.is_file():
+        src = sec_conf.read_text(encoding="utf-8", errors="ignore")
+        if "CONFIG_QSEECOM_PROXY=m" in src or "CONFIG_CRYPTO_DEV_QCEDEV=m" in src:
+            sec_conf.write_text(
+                "export CONFIG_QTI_TZ_LOG=m\n"
+                "export CONFIG_CRYPTO_DEV_QCEDEV=n\n"
+                "export CONFIG_CRYPTO_DEV_QCRYPTO=n\n"
+                "export CONFIG_HDCP_QSEECOM=m\n"
+                "export CONFIG_HW_RANDOM_MSM_LEGACY=m\n"
+                "export CONFIG_QSEECOM_PROXY=n\n",
+                encoding="utf-8",
+            )
+            print("k618_tp_fix: securemsm-kernel/config/sec-kernel_defconfig.conf (sm6225 defconfig)")
+
+    # 4. sec-kernel_defconfig.h
+    sec_h = tp_root / "securemsm-kernel/config/sec-kernel_defconfig.h"
+    if sec_h.is_file():
+        src = sec_h.read_text(encoding="utf-8", errors="ignore")
+        if "CONFIG_CRYPTO_DEV_QCEDEV" in src:
+            sec_h.write_text(
+                "/* SPDX-License-Identifier: GPL-2.0-only */\n"
+                "#define CONFIG_QTI_TZ_LOG 1\n"
+                "#define CONFIG_HDCP_QSEECOM 1\n"
+                "#define CONFIG_HW_RANDOM_MSM_LEGACY 1\n",
+                encoding="utf-8",
+            )
+            print("k618_tp_fix: securemsm-kernel/config/sec-kernel_defconfig.h (sm6225 defconfig)")
+
+    # 5. crypto-qti: replace <linux/dma-iommu.h> with <linux/iommu.h>
+    for rel in ("crypto-qti/qcedev_smmu.h", "crypto-qti/qce50.c", "crypto-qti/qcedev_smmu.c"):
+        fpath = tp_root / f"securemsm-kernel/{rel}"
+        if fpath.is_file():
+            src = fpath.read_text(encoding="utf-8", errors="ignore")
+            if "<linux/dma-iommu.h>" in src:
+                fpath.write_text(src.replace("<linux/dma-iommu.h>", "<linux/iommu.h>"), encoding="utf-8")
+                print(f"k618_tp_fix: securemsm-kernel/{rel} (dma-iommu.h -> iommu.h)")
 
 
 if __name__ == "__main__":
