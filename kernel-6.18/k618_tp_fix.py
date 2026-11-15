@@ -10,6 +10,8 @@ Prints what it changed; idempotent."""
 
 import os
 import sys
+import re
+from pathlib import Path
 
 # (file, old text, new text, why)
 EDITS = [
@@ -679,30 +681,7 @@ EDITS = [
 		}
 	}
 """),
-    ('display-drivers/msm/sde/sde_crtc.c',
-     '\t\t\tif (copy_from_user(&scaler_v2, scaler_v2_usr,\n'
-     '\t\t\t\t\tsizeof(scaler_v2))) {\n',
-     "\t\t\t/* k618: 5.15's sde_drm_scaler_v2 ends at de_lpf_m */\n"
-     '\t\t\tif (copy_from_user(&scaler_v2, scaler_v2_usr,\n'
-     '\t\t\t\t\toffsetof(struct sde_drm_scaler_v2, dir45_en))) {\n'),
-    ('display-drivers/msm/sde/sde_plane.c',
-     '\tif (copy_from_user(&scale_v2, usr, sizeof(scale_v2))) {\n',
-     '\t/*\n'
-     "\t * k618: 5.15's sde_drm_scaler_v2 (the ROM's composer) ends at de_lpf_m; the\n"
-     "\t * QSEED6/7 fields after it would be read from beyond the caller's struct\n"
-     '\t */\n'
-     '\tmemset(&scale_v2, 0, sizeof(scale_v2));\n'
-     '\tif (copy_from_user(&scale_v2, usr, offsetof(struct sde_drm_scaler_v2, dir45_en))) {\n'),
-    ('display-drivers/msm/sde/sde_crtc.c',
-     '\tif (copy_from_user(&roi_v1, usr_ptr, sizeof(roi_v1))) {\n',
-     "\t/* k618: 5.15's sde_drm_roi_v1 (the ROM's composer) has no SPR ROI after roi[] */\n"
-     '\tmemset(&roi_v1, 0, sizeof(roi_v1));\n'
-     '\tif (copy_from_user(&roi_v1, usr_ptr, offsetof(struct sde_drm_roi_v1, roi_feature_flags))) {\n'),
-    ('display-drivers/msm/sde/sde_connector.c',
-     '\tif (copy_from_user(&roi_v1, usr_ptr, sizeof(roi_v1))) {\n',
-     "\t/* k618: 5.15's sde_drm_roi_v1 (the ROM's composer) has no SPR ROI after roi[] */\n"
-     '\tmemset(&roi_v1, 0, sizeof(roi_v1));\n'
-     '\tif (copy_from_user(&roi_v1, usr_ptr, offsetof(struct sde_drm_roi_v1, roi_feature_flags))) {\n'),
+
     ('display-drivers/msm/sde/sde_hw_ds.c',
      '\tcase DEST_SCALER_QUAD_PIPE:\n'
      '\t\top_mode = (BIT(0) | BIT(1));\n'
@@ -5792,82 +5771,6 @@ EDITS += [
 ]
 
 
-K618_CP_LEGACY = """/*
- * k618: a blob the size of 5.15's drm_msm_igc_lut / drm_msm_pgc_lut (everything up to the 6.x
- * *_extended tables) is copied into one of today's size: tables zero and the 6.x high-precision
- * flag -- the only thing that reads them -- clear, which is what a client that never heard of them
- * meant. Anything else is returned as it was.
- */
-static struct drm_property_blob *k618_cp_legacy_blob(struct drm_device *dev,
-	struct drm_property_blob *blob, u32 feature, size_t want)
-{
-	struct drm_property_blob *big;
-	size_t old;
-
-	if (feature == SDE_CP_CRTC_DSPP_IGC && want == sizeof(struct drm_msm_igc_lut))
-		old = offsetof(struct drm_msm_igc_lut, c0_extended);
-	else if (feature == SDE_CP_CRTC_DSPP_GC && want == sizeof(struct drm_msm_pgc_lut))
-		old = offsetof(struct drm_msm_pgc_lut, c0_extended);
-	else
-		return blob;
-	if (blob->length != old)
-		return blob;
-	big = drm_property_create_blob(dev, want, NULL);	/* zero-filled */
-	if (IS_ERR(big))
-		return blob;
-	memcpy(big->data, blob->data, old);
-	if (feature == SDE_CP_CRTC_DSPP_IGC)
-		((struct drm_msm_igc_lut *)big->data)->flags &= ~(__u64)IGC_HIGH_PREC_ENABLE;
-	else
-		((struct drm_msm_pgc_lut *)big->data)->flags &= ~(__u64)PGC_HIGHPREC_EN;
-	drm_property_blob_put(blob);
-	return big;
-}
-
-"""
-
-EDITS += [
-    ("display-drivers/msm/sde/sde_color_processing.c",
-     "static int _sde_cp_crtc_cache_blob_property(struct drm_crtc *crtc,\n",
-     K618_CP_LEGACY + "static int _sde_cp_crtc_cache_blob_property(struct drm_crtc *crtc,\n"),
-    ("display-drivers/msm/sde/sde_color_processing.c",
-     "\t\tDRM_ERROR(\"invalid blob id %lld feature %d\\n\", val, prop_node->feature);\n"
-     "\t\treturn -EINVAL;\n"
-     "\t}\n"
-     "\tif (blob->length != prop_node->prop_blob_sz) {\n",
-     "\t\tDRM_ERROR(\"invalid blob id %lld feature %d\\n\", val, prop_node->feature);\n"
-     "\t\treturn -EINVAL;\n"
-     "\t}\n"
-     "\tblob = k618_cp_legacy_blob(crtc->dev, blob, prop_node->feature,\n"
-     "\t\t\t\t   prop_node->prop_blob_sz);\t/* k618: 5.15 clients */\n"
-     "\tif (blob->length != prop_node->prop_blob_sz) {\n"),
-    # the planes' DMA degamma / gamma read c2 only (the first 256 / 128 words), all of it inside
-    # the 5.15 layout: a blob of that size is taken as it is
-    ("display-drivers/msm/sde/sde_hw_reg_dma_v1_color_proc.c",
-     "\t\tdma_igcv5_off(ctx, cfg, idx);\n"
-     "\t\treturn;\n"
-     "\t}\n"
-     "\n"
-     "\tif (hw_cfg->len != sizeof(struct drm_msm_igc_lut)) {\n",
-     "\t\tdma_igcv5_off(ctx, cfg, idx);\n"
-     "\t\treturn;\n"
-     "\t}\n"
-     "\n"
-     "\tif (hw_cfg->len != sizeof(struct drm_msm_igc_lut) &&\t/* k618: or 5.15's, c2 only read */\n"
-     "\t    hw_cfg->len != offsetof(struct drm_msm_igc_lut, c0_extended)) {\n"),
-    ("display-drivers/msm/sde/sde_hw_reg_dma_v1_color_proc.c",
-     "\t\tdma_gcv5_off(ctx, cfg, idx);\n"
-     "\t\treturn;\n"
-     "\t}\n"
-     "\n"
-     "\tif (hw_cfg->len != sizeof(struct drm_msm_pgc_lut)) {\n",
-     "\t\tdma_gcv5_off(ctx, cfg, idx);\n"
-     "\t\treturn;\n"
-     "\t}\n"
-     "\n"
-     "\tif (hw_cfg->len != sizeof(struct drm_msm_pgc_lut) &&\t/* k618: or 5.15's, c2 only read */\n"
-     "\t    hw_cfg->len != offsetof(struct drm_msm_pgc_lut, c0_extended)) {\n"),
-]
 
 
 EDITS += [
@@ -6067,6 +5970,705 @@ EDITS += [
      "\t\t\t     msm_prop.o\n"
      "\n# k618: Xiaomi's display extension (k618_mi_disp.c), after every := above\n"
      "msm_drm-y += mi_disp_k618.o\n"),
+
+    # SDE rotator: v4l2_fh_add and v4l2_fh_del take struct file * in 6.18
+    ("display-drivers/rotator/sde_rotator_dev.c",
+     "v4l2_fh_add(&ctx->fh);",
+     "v4l2_fh_add(&ctx->fh, ctx->file);"),
+    ("display-drivers/rotator/sde_rotator_dev.c",
+     "v4l2_fh_del(&ctx->fh);",
+     "v4l2_fh_del(&ctx->fh, ctx->file);"),
+    # SDE rotator: platform_driver .remove returns void since 6.11
+    ("display-drivers/rotator/sde_rotator_dev.c",
+     "static int sde_rotator_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tstruct sde_rotator_device *rot_dev;\n"
+     "\tint i;\n\n"
+     "\trot_dev = platform_get_drvdata(pdev);\n"
+     "\tif (rot_dev == NULL) {\n"
+     "\t\tSDEDEV_ERR(&pdev->dev, \"fail get rotator drvdata\\n\");\n"
+     "\t\treturn 0;\n"
+     "\t}\n\n"
+     "\tfor (i = MAX_ROT_OPEN_SESSION - 1; i >= 0; i--)\n"
+     "\t\tkthread_stop(rot_dev->rot_thread[i]);\n"
+     "\tsde_rotator_destroy_debugfs(rot_dev->debugfs_root);\n"
+     "\tvideo_unregister_device(rot_dev->vdev);\n"
+     "\tvideo_device_release(rot_dev->vdev);\n"
+     "\tv4l2_device_unregister(&rot_dev->v4l2_dev);\n"
+     "\tv4l2_m2m_release(rot_dev->m2m_dev);\n"
+     "\tsde_rotator_core_destroy(rot_dev->mgr);\n"
+     "\tsde_rotator_base_destroy(rot_dev->mdata);\n"
+     "\tkvfree(rot_dev);\n"
+     "\treturn 0;\n"
+     "}",
+     "static void sde_rotator_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tstruct sde_rotator_device *rot_dev;\n"
+     "\tint i;\n\n"
+     "\trot_dev = platform_get_drvdata(pdev);\n"
+     "\tif (rot_dev == NULL) {\n"
+     "\t\tSDEDEV_ERR(&pdev->dev, \"fail get rotator drvdata\\n\");\n"
+     "\t\treturn;\n"
+     "\t}\n\n"
+     "\tfor (i = MAX_ROT_OPEN_SESSION - 1; i >= 0; i--)\n"
+     "\t\tkthread_stop(rot_dev->rot_thread[i]);\n"
+     "\tsde_rotator_destroy_debugfs(rot_dev->debugfs_root);\n"
+     "\tvideo_unregister_device(rot_dev->vdev);\n"
+     "\tvideo_device_release(rot_dev->vdev);\n"
+     "\tv4l2_device_unregister(&rot_dev->v4l2_dev);\n"
+     "\tv4l2_m2m_release(rot_dev->m2m_dev);\n"
+     "\tsde_rotator_core_destroy(rot_dev->mgr);\n"
+     "\tsde_rotator_base_destroy(rot_dev->mdata);\n"
+     "\tkvfree(rot_dev);\n"
+     "}"),
+    ("display-drivers/rotator/sde_rotator_dev.c",
+     "static int sde_rotator_remove(struct platform_device *pdev)\n{\n\treturn 0;\n}",
+     "static void sde_rotator_remove(struct platform_device *pdev)\n{\n}"),
+    ("display-drivers/rotator/sde_rotator_smmu.c",
+     "int sde_smmu_remove(struct platform_device *pdev)",
+     "void sde_smmu_remove(struct platform_device *pdev)"),
+    ("display-drivers/rotator/sde_rotator_smmu.c",
+     "\tsde_smmu->mp.num_vreg = 0;\n\t}\n\treturn 0;\n}",
+     "\tsde_smmu->mp.num_vreg = 0;\n\t}\n}"),
+    ("display-drivers/rotator/sde_rotator_smmu.c",
+     "match = of_match_device(sde_smmu_dt_match, &pdev->dev);",
+     "match = of_match_node(sde_smmu_dt_match, pdev->dev.of_node);"),
+    ("display-drivers/msm/msm_smmu.c",
+     "match = of_match_device(msm_smmu_dt_match, &pdev->dev);",
+     "match = of_match_node(msm_smmu_dt_match, pdev->dev.of_node);"),
+
+    # graphics-kernel: 6.18 API updates (sched/mm.h, get_user_pages, const vm_flags, class_create)
+    ("graphics-kernel/kgsl.c",
+     "#include <linux/mem-buf.h>\n",
+     "#include <linux/mem-buf.h>\n#include <linux/sched/mm.h>\n"),
+    ("graphics-kernel/kgsl.c",
+     "npages = get_user_pages(useraddr, sglen, write, pages, NULL);",
+     "npages = get_user_pages(useraddr, sglen, write, pages);"),
+    ("graphics-kernel/kgsl.c",
+     "\tvma->vm_flags &= ~VM_MAYWRITE;\n",
+     "\tvm_flags_clear(vma, VM_MAYWRITE);\n"),
+    ("graphics-kernel/kgsl.c",
+     "\tvma->vm_flags |= memdesc->ops->vmflags;\n",
+     "\tvm_flags_set(vma, memdesc->ops->vmflags);\n"),
+    ("graphics-kernel/kgsl.c",
+     "\tvma->vm_flags |= entry->memdesc.ops->vmflags;\n",
+     "\tvm_flags_set(vma, entry->memdesc.ops->vmflags);\n"),
+    ("graphics-kernel/kgsl.c",
+     "kgsl_driver.class = class_create(THIS_MODULE, \"kgsl\");",
+     "kgsl_driver.class = class_create(\"kgsl\");"),
+
+    # SDE rotator: unmap vaddr with struct iosys_map
+    ("display-drivers/rotator/sde_rotator_r3.c",
+     "\tif (dbgbuf->vaddr) {\n"
+     "\t\tdma_buf_vunmap(dbgbuf->dmabuf, dbgbuf->vaddr);\n"
+     "\t\tdma_buf_end_cpu_access(dbgbuf->dmabuf, DMA_FROM_DEVICE);\n"
+     "\t}",
+     "\tif (dbgbuf->vaddr) {\n"
+     "\t\tstruct iosys_map map = IOSYS_MAP_INIT_VADDR(dbgbuf->vaddr);\n"
+     "\t\tdma_buf_vunmap(dbgbuf->dmabuf, &map);\n"
+     "\t\tdma_buf_end_cpu_access(dbgbuf->dmabuf, DMA_FROM_DEVICE);\n"
+     "\t}"),
+    # SDE rotator: fence_value_str / timeline_value_str removed from dma_fence_ops in 6.16
+    ("display-drivers/rotator/sde_rotator_sync.c",
+     "\t.fence_value_str = sde_rot_fence_value_str,\n"
+     "\t.timeline_value_str = sde_rot_fence_timeline_value_str,\n",
+     ""),
+
+    # iommu_map_sg takes gfp_t gfp since 6.0
+    ("display-drivers/msm/msm_smmu.c",
+     "ret = iommu_map_sg(client->domain, iova, sgt->sgl,\n\t\t\t\tsgt->orig_nents, prot);",
+     "ret = iommu_map_sg(client->domain, iova, sgt->sgl,\n\t\t\t\tsgt->orig_nents, prot, GFP_KERNEL);"),
+    ("display-drivers/msm/msm_smmu.c",
+     "ret = iommu_map(client->domain, dest_address, dest_address,\n\t\t\tsize, prot);",
+     "ret = iommu_map(client->domain, dest_address, dest_address,\n\t\t\tsize, prot, GFP_KERNEL);"),
+    ("graphics-kernel/kgsl_gmu_core.c",
+     "mapped = iommu_map_sg(domain, gmuaddr, memdesc->sgt->sgl,\n\t\t\tmemdesc->sgt->nents, attrs);",
+     "mapped = iommu_map_sg(domain, gmuaddr, memdesc->sgt->sgl,\n\t\t\tmemdesc->sgt->nents, attrs, GFP_KERNEL);"),
+    ("graphics-kernel/kgsl_gmu_core.c",
+     "mapped = iommu_map_sg(domain, gmuaddr, sgt.sgl, sgt.nents, attrs);",
+     "mapped = iommu_map_sg(domain, gmuaddr, sgt.sgl, sgt.nents, attrs, GFP_KERNEL);"),
+    ("graphics-kernel/kgsl_iommu.c",
+     "return iommu_map_sg(domain, gpuaddr, sgt->sgl, sgt->orig_nents, prot);",
+     "return iommu_map_sg(domain, gpuaddr, sgt->sgl, sgt->orig_nents, prot, GFP_KERNEL);"),
+
+    # platform_driver .remove returns void since 6.11 (graphics-kernel)
+    ("graphics-kernel/kgsl_mmu.c",
+     "static int kgsl_mmu_dev_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tif (of_device_is_compatible(pdev->dev.of_node,\n"
+     "\t\t\t\t\"qcom,smmu-kgsl-cb\")) {\n"
+     "\t\tcomponent_del(&pdev->dev, &kgsl_mmu_cb_component_ops);\n"
+     "\t\treturn 0;\n"
+     "\t}\n\n"
+     "\tcomponent_del(&pdev->dev, &kgsl_mmu_component_ops);\n\n"
+     "\tof_platform_depopulate(&pdev->dev);\n"
+     "\treturn 0;\n"
+     "}",
+     "static void kgsl_mmu_dev_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tif (of_device_is_compatible(pdev->dev.of_node,\n"
+     "\t\t\t\t\"qcom,smmu-kgsl-cb\")) {\n"
+     "\t\tcomponent_del(&pdev->dev, &kgsl_mmu_cb_component_ops);\n"
+     "\t\treturn;\n"
+     "\t}\n\n"
+     "\tcomponent_del(&pdev->dev, &kgsl_mmu_component_ops);\n\n"
+     "\tof_platform_depopulate(&pdev->dev);\n"
+     "}"),
+    ("graphics-kernel/adreno.c",
+     "static int adreno_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tcomponent_master_del(&pdev->dev, &adreno_ops);\n\n"
+     "\treturn 0;\n"
+     "}",
+     "static void adreno_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tcomponent_master_del(&pdev->dev, &adreno_ops);\n"
+     "}"),
+    ("graphics-kernel/adreno_a6xx_rgmu.c",
+     "static int a6xx_rgmu_remove_dev(struct platform_device *pdev)\n"
+     "{\n"
+     "\tcomponent_del(&pdev->dev, &a6xx_rgmu_component_ops);\n"
+     "\treturn 0;\n"
+     "}",
+     "static void a6xx_rgmu_remove_dev(struct platform_device *pdev)\n"
+     "{\n"
+     "\tcomponent_del(&pdev->dev, &a6xx_rgmu_component_ops);\n"
+     "}"),
+    ("graphics-kernel/adreno_a6xx_gmu.c",
+     "static int a6xx_gmu_remove_dev(struct platform_device *pdev)\n"
+     "{\n"
+     "\tcomponent_del(&pdev->dev, &a6xx_gmu_component_ops);\n"
+     "\treturn 0;\n"
+     "}",
+     "static void a6xx_gmu_remove_dev(struct platform_device *pdev)\n"
+     "{\n"
+     "\tcomponent_del(&pdev->dev, &a6xx_gmu_component_ops);\n"
+     "}"),
+    ("graphics-kernel/adreno_gen7_gmu.c",
+     "static int gen7_gmu_remove_dev(struct platform_device *pdev)\n"
+     "{\n"
+     "\tcomponent_del(&pdev->dev, &gen7_gmu_component_ops);\n"
+     "\treturn 0;\n"
+     "}",
+     "static void gen7_gmu_remove_dev(struct platform_device *pdev)\n"
+     "{\n"
+     "\tcomponent_del(&pdev->dev, &gen7_gmu_component_ops);\n"
+     "}"),
+
+    # platform_driver .remove returns void since 6.11 (display-drivers)
+    ("display-drivers/hdcp/msm_hdcp.c",
+     "static int msm_hdcp_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tstruct msm_hdcp *hdcp;\n\n"
+     "\thdcp = platform_get_drvdata(pdev);\n"
+     "\tif (!hdcp)\n"
+     "\t\treturn -ENODEV;\n\n"
+     "\tsysfs_remove_group(&hdcp->device->kobj,\n"
+     "\t&msm_hdcp_fs_attr_group);\n"
+     "\tcdev_del(&hdcp->cdev);\n"
+     "\tdevice_destroy(hdcp->class, hdcp->dev_num);\n"
+     "\tclass_destroy(hdcp->class);\n"
+     "\tunregister_chrdev_region(hdcp->dev_num, 1);\n\n"
+     "\treturn 0;\n"
+     "}",
+     "static void msm_hdcp_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tstruct msm_hdcp *hdcp;\n\n"
+     "\thdcp = platform_get_drvdata(pdev);\n"
+     "\tif (!hdcp)\n"
+     "\t\treturn;\n\n"
+     "\tsysfs_remove_group(&hdcp->device->kobj,\n"
+     "\t&msm_hdcp_fs_attr_group);\n"
+     "\tcdev_del(&hdcp->cdev);\n"
+     "\tdevice_destroy(hdcp->class, hdcp->dev_num);\n"
+     "\tclass_destroy(hdcp->class);\n"
+     "\tunregister_chrdev_region(hdcp->dev_num, 1);\n"
+     "}"),
+    ("display-drivers/msm/msm_smmu.c",
+     "static int msm_smmu_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tstruct msm_smmu_client *client;\n"
+     "\tstruct msm_smmu_client *curr, *next;\n\n"
+     "\tclient = platform_get_drvdata(pdev);\n"
+     "\tclient->domain_attached = false;\n\n"
+     "\tmutex_lock(&smmu_list_lock);\n"
+     "\tlist_for_each_entry_safe(curr, next, &sde_smmu_list, smmu_list) {\n"
+     "\t\tif (curr == client) {\n"
+     "\t\t\tlist_del(&client->smmu_list);\n"
+     "\t\t\tbreak;\n"
+     "\t\t}\n"
+     "\t}\n"
+     "\tmutex_unlock(&smmu_list_lock);\n\n"
+     "\treturn 0;\n"
+     "}",
+     "static void msm_smmu_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tstruct msm_smmu_client *client;\n"
+     "\tstruct msm_smmu_client *curr, *next;\n\n"
+     "\tclient = platform_get_drvdata(pdev);\n"
+     "\tclient->domain_attached = false;\n\n"
+     "\tmutex_lock(&smmu_list_lock);\n"
+     "\tlist_for_each_entry_safe(curr, next, &sde_smmu_list, smmu_list) {\n"
+     "\t\tif (curr == client) {\n"
+     "\t\t\tlist_del(&client->smmu_list);\n"
+     "\t\t\tbreak;\n"
+     "\t\t}\n"
+     "\t}\n"
+     "\tmutex_unlock(&smmu_list_lock);\n"
+     "}"),
+    ("display-drivers/msm/msm_drv.c",
+     "static int msm_pdev_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tcomponent_master_del(&pdev->dev, &msm_drm_ops);\n"
+     "\tof_platform_depopulate(&pdev->dev);\n\n"
+     "\treturn 0;\n"
+     "}",
+     "static void msm_pdev_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tcomponent_master_del(&pdev->dev, &msm_drm_ops);\n"
+     "\tof_platform_depopulate(&pdev->dev);\n"
+     "}"),
+    ("display-drivers/msm/leds-sm5109c.c",
+     "static int lcd_bias_dts_remove(struct platform_device *pdev);",
+     "static void lcd_bias_dts_remove(struct platform_device *pdev);"),
+    ("display-drivers/msm/leds-sm5109c.c",
+     "static int lcd_bias_dts_remove(struct platform_device *pdev)\n"
+     "{\n\n"
+     "    platform_driver_unregister(&lcd_bias_platform_driver);\n"
+     "    return 0;\n"
+     "}",
+     "static void lcd_bias_dts_remove(struct platform_device *pdev)\n"
+     "{\n\n"
+     "    platform_driver_unregister(&lcd_bias_platform_driver);\n"
+     "}"),
+    ("display-drivers/msm/leds-sm5109c.c",
+     "static int lcd_bias_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id);",
+     "static int lcd_bias_i2c_probe(struct i2c_client *client);"),
+    ("display-drivers/msm/leds-sm5109c.c",
+     "static int lcd_bias_i2c_remove(struct i2c_client *client);",
+     "static void lcd_bias_i2c_remove(struct i2c_client *client);"),
+    ("display-drivers/msm/leds-sm5109c.c",
+     "static int lcd_bias_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)\n{",
+     "static int lcd_bias_i2c_probe(struct i2c_client *client)\n{"),
+    ("display-drivers/msm/leds-sm5109c.c",
+     "static int lcd_bias_i2c_remove(struct i2c_client *client)\n"
+     "{\n"
+     "    lcd_bias_i2c_client = NULL;\n"
+     "    i2c_unregister_device(client);\n"
+     "    return 0;\n"
+     "}",
+     "static void lcd_bias_i2c_remove(struct i2c_client *client)\n"
+     "{\n"
+     "    lcd_bias_i2c_client = NULL;\n"
+     "    i2c_unregister_device(client);\n"
+     "}"),
+    ("display-drivers/msm/sde_rsc.c",
+     "static int sde_rsc_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tstruct sde_rsc_priv *rsc = platform_get_drvdata(pdev);\n\n"
+     "\tsde_rsc_deinit(pdev, rsc);\n"
+     "\treturn 0;\n"
+     "}",
+     "static void sde_rsc_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tstruct sde_rsc_priv *rsc = platform_get_drvdata(pdev);\n\n"
+     "\tsde_rsc_deinit(pdev, rsc);\n"
+     "}"),
+    ("display-drivers/msm/dsi/dsi_phy.c",
+     "static int dsi_phy_driver_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tint rc = 0;\n"
+     "\tstruct msm_dsi_phy *phy = platform_get_drvdata(pdev);\n"
+     "\tstruct list_head *pos, *tmp;\n\n"
+     "\tif (!pdev || !phy) {\n"
+     "\t\tDSI_PHY_ERR(phy, \"Invalid device\\n\");\n"
+     "\t\treturn -EINVAL;\n"
+     "\t}",
+     "static void dsi_phy_driver_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tint rc = 0;\n"
+     "\tstruct msm_dsi_phy *phy = platform_get_drvdata(pdev);\n"
+     "\tstruct list_head *pos, *tmp;\n\n"
+     "\tif (!pdev || !phy) {\n"
+     "\t\tDSI_PHY_ERR(phy, \"Invalid device\\n\");\n"
+     "\t\treturn;\n"
+     "\t}"),
+    ("display-drivers/msm/dsi/dsi_phy.c",
+     "\tplatform_set_drvdata(pdev, NULL);\n\n"
+     "\treturn 0;\n"
+     "}\n\n"
+     "static struct platform_driver dsi_phy_platform_driver",
+     "\tplatform_set_drvdata(pdev, NULL);\n"
+     "}\n\n"
+     "static struct platform_driver dsi_phy_platform_driver"),
+    ("display-drivers/msm/dsi/dsi_ctrl.c",
+     "static int dsi_ctrl_dev_remove(struct platform_device *pdev)",
+     "static void dsi_ctrl_dev_remove(struct platform_device *pdev)"),
+    ("display-drivers/msm/dsi/dsi_ctrl.c",
+     "\tplatform_set_drvdata(pdev, NULL);\n\treturn 0;\n}\n\nstatic struct platform_driver dsi_ctrl_driver",
+     "\tplatform_set_drvdata(pdev, NULL);\n}\n\nstatic struct platform_driver dsi_ctrl_driver"),
+    ("display-drivers/msm/dsi/dsi_display.h",
+     "int dsi_display_dev_remove(struct platform_device *pdev);",
+     "void dsi_display_dev_remove(struct platform_device *pdev);"),
+    ("display-drivers/msm/dsi/dsi_display.c",
+     "int dsi_display_dev_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tint rc = 0, i = 0;\n"
+     "\tstruct dsi_display *display;\n"
+     "\tstruct dsi_display_ctrl *ctrl;\n\n"
+     "\tif (!pdev) {\n"
+     "\t\tDSI_ERR(\"Invalid device\\n\");\n"
+     "\t\treturn -EINVAL;\n"
+     "\t}\n\n"
+     "\tdisplay = platform_get_drvdata(pdev);\n"
+     "\tif (!display || !display->panel_node) {\n"
+     "\t\tDSI_ERR(\"invalid display\\n\");\n"
+     "\t\treturn -EINVAL;\n"
+     "\t}",
+     "void dsi_display_dev_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tint i = 0;\n"
+     "\tstruct dsi_display *display;\n"
+     "\tstruct dsi_display_ctrl *ctrl;\n\n"
+     "\tif (!pdev) {\n"
+     "\t\tDSI_ERR(\"Invalid device\\n\");\n"
+     "\t\treturn;\n"
+     "\t}\n\n"
+     "\tdisplay = platform_get_drvdata(pdev);\n"
+     "\tif (!display || !display->panel_node) {\n"
+     "\t\tDSI_ERR(\"invalid display\\n\");\n"
+     "\t\treturn;\n"
+     "\t}"),
+    ("display-drivers/msm/dsi/dsi_display.c",
+     "\tplatform_set_drvdata(pdev, NULL);\n"
+     "\tdevm_kfree(&pdev->dev, display);\n"
+     "\treturn rc;\n"
+     "}",
+     "\tplatform_set_drvdata(pdev, NULL);\n"
+     "\tdevm_kfree(&pdev->dev, display);\n"
+     "}"),
+    ("display-drivers/msm/sde/sde_wb.c",
+     "static int sde_wb_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tstruct sde_wb_device *wb_dev;\n"
+     "\tstruct sde_wb_device *curr, *next;\n\n"
+     "\twb_dev = platform_get_drvdata(pdev);\n"
+     "\tif (!wb_dev)\n"
+     "\t\treturn 0;",
+     "static void sde_wb_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tstruct sde_wb_device *wb_dev;\n"
+     "\tstruct sde_wb_device *curr, *next;\n\n"
+     "\twb_dev = platform_get_drvdata(pdev);\n"
+     "\tif (!wb_dev)\n"
+     "\t\treturn;"),
+    ("display-drivers/msm/sde/sde_wb.c",
+     "\tplatform_set_drvdata(pdev, NULL);\n"
+     "\tdevm_kfree(&pdev->dev, wb_dev);\n\n"
+     "\treturn 0;\n"
+     "}",
+     "\tplatform_set_drvdata(pdev, NULL);\n"
+     "\tdevm_kfree(&pdev->dev, wb_dev);\n"
+     "}"),
+    ("display-drivers/msm/dp/dp_display.c",
+     "static int dp_display_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tstruct dp_display_private *dp;\n\n"
+     "\tif (!pdev)\n"
+     "\t\treturn -EINVAL;",
+     "static void dp_display_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tstruct dp_display_private *dp;\n\n"
+     "\tif (!pdev)\n"
+     "\t\treturn;"),
+    ("display-drivers/msm/dp/dp_display.c",
+     "\tif (g_dp_display->dp_ipc_log) {\n"
+     "\t\tipc_log_context_destroy(g_dp_display->dp_ipc_log);\n"
+     "\t\tg_dp_display->dp_ipc_log = NULL;\n"
+     "\t}\n\n"
+     "\treturn 0;\n"
+     "}",
+     "\tif (g_dp_display->dp_ipc_log) {\n"
+     "\t\tipc_log_context_destroy(g_dp_display->dp_ipc_log);\n"
+     "\t\tg_dp_display->dp_ipc_log = NULL;\n"
+     "\t}\n"
+     "}"),
+
+    # graphics-kernel: dma_fence_ops lost fence_value_str in 6.16
+    ("graphics-kernel/kgsl_sync.c",
+     "\t\tif (f->ops->fence_value_str) {\n"
+     "\t\t\tlen += scnprintf(fi->name + len, sizeof(fi->name) - len,\n"
+     "\t\t\t\t\": \");\n"
+     "\t\t\tf->ops->fence_value_str(f, fi->name + len,\n"
+     "\t\t\t\tsizeof(fi->name) - len);\n"
+     "\t\t}\n",
+     "\t\t/* k618: dma_fence_ops has no fence_value_str since 6.16 */\n"),
+    ("graphics-kernel/oplus_sync_fence/src/oplus_sync_file.c",
+     "\t.fence_value_str = timeline_fence_value_str,\n"
+     "\t.timeline_value_str = timeline_fence_timeline_value_str,\n",
+     ""),
+
+    # graphics-kernel: register_shrinker replaced with shrinker_alloc in 6.7
+    ("graphics-kernel/kgsl_reclaim.c",
+     "#include <linux/shmem_fs.h>\n",
+     "#include <linux/shmem_fs.h>\n#include <linux/shrinker.h>\n"),
+    ("graphics-kernel/kgsl_reclaim.c",
+     "/* Shrinker callback data*/\n"
+     "static struct shrinker kgsl_reclaim_shrinker = {\n"
+     "\t.count_objects = kgsl_reclaim_shrink_count_objects,\n"
+     "\t.scan_objects = kgsl_reclaim_shrink_scan_objects,\n"
+     "\t.seeks = DEFAULT_SEEKS,\n"
+     "\t.batch = 0,\n"
+     "};",
+     "/* Shrinker callback data*/\n"
+     "static struct shrinker *kgsl_reclaim_shrinker;"),
+    ("graphics-kernel/kgsl_reclaim.c",
+     "int kgsl_reclaim_init(void)\n"
+     "{\n"
+     "\tint ret;\n\n"
+     "\t/* Initialize shrinker */\n"
+     "\tret = register_shrinker(&kgsl_reclaim_shrinker);\n"
+     "\tif (ret)\n"
+     "\t\tpr_err(\"kgsl: reclaim: Failed to register shrinker\\n\");\n"
+     "\telse\n"
+     "\t\tINIT_WORK(&reclaim_work, kgsl_reclaim_background_work);\n\n"
+     "\treturn ret;\n"
+     "}\n\n"
+     "void kgsl_reclaim_close(void)\n"
+     "{\n"
+     "\t/* Unregister shrinker */\n"
+     "\tunregister_shrinker(&kgsl_reclaim_shrinker);\n"
+     "}",
+     "int kgsl_reclaim_init(void)\n"
+     "{\n"
+     "\t/* Initialize shrinker */\n"
+     "\tkgsl_reclaim_shrinker = shrinker_alloc(0, \"kgsl-reclaim\");\n"
+     "\tif (!kgsl_reclaim_shrinker) {\n"
+     "\t\tpr_err(\"kgsl: reclaim: Failed to allocate shrinker\\n\");\n"
+     "\t\treturn -ENOMEM;\n"
+     "\t}\n\n"
+     "\tkgsl_reclaim_shrinker->count_objects = kgsl_reclaim_shrink_count_objects;\n"
+     "\tkgsl_reclaim_shrinker->scan_objects = kgsl_reclaim_shrink_scan_objects;\n"
+     "\tkgsl_reclaim_shrinker->seeks = DEFAULT_SEEKS;\n"
+     "\tkgsl_reclaim_shrinker->batch = 0;\n\n"
+     "\tshrinker_register(kgsl_reclaim_shrinker);\n"
+     "\tINIT_WORK(&reclaim_work, kgsl_reclaim_background_work);\n\n"
+     "\treturn 0;\n"
+     "}\n\n"
+     "void kgsl_reclaim_close(void)\n"
+     "{\n"
+     "\t/* Unregister shrinker */\n"
+     "\tshrinker_free(kgsl_reclaim_shrinker);\n"
+     "}"),
+
+    # display-drivers: sde_hw_ctl.h needs sde_fence.h unconditionally for struct sde_hw_fence_data
+    ("display-drivers/msm/sde/sde_hw_ctl.h",
+     '#include "sde_hw_sspp.h"\n',
+     '#include "sde_hw_sspp.h"\n#include "sde_fence.h"\n'),
+
+    # display-drivers: msm_drv.h needs drm_framebuffer.h in 6.x
+    ("display-drivers/msm/msm_drv.h",
+     '#include <drm/drm_fb_helper.h>\n',
+     '#include <drm/drm_fb_helper.h>\n#include <drm/drm_framebuffer.h>\n'),
+
+    # graphics-kernel: iommu_domain_alloc replaced with iommu_paging_domain_alloc in 6.6+
+    ("graphics-kernel/adreno_a6xx_gmu.c",
+     "\tgmu->domain = iommu_domain_alloc(&platform_bus_type);\n\tif (gmu->domain == NULL) {",
+     "\tgmu->domain = iommu_paging_domain_alloc(&gmu->pdev->dev);\n\tif (IS_ERR(gmu->domain))\n\t\tgmu->domain = NULL;\n\tif (gmu->domain == NULL) {"),
+    ("graphics-kernel/adreno_gen7_gmu.c",
+     "\tgmu->domain = iommu_domain_alloc(&platform_bus_type);\n\tif (gmu->domain == NULL) {",
+     "\tgmu->domain = iommu_paging_domain_alloc(&gmu->pdev->dev);\n\tif (IS_ERR(gmu->domain))\n\t\tgmu->domain = NULL;\n\tif (gmu->domain == NULL) {"),
+    ("graphics-kernel/kgsl_iommu.c",
+     "\t/* Create a new context */\n\tcontext->domain = iommu_domain_alloc(&platform_bus_type);\n\tif (!context->domain) {",
+     "\t/* Create a new context */\n\tcontext->domain = iommu_paging_domain_alloc(&pdev->dev);\n\tif (IS_ERR(context->domain))\n\t\tcontext->domain = NULL;\n\tif (!context->domain) {"),
+    ("graphics-kernel/kgsl_iommu.c",
+     "\tratelimit_default_init(&context->ratelimit);\n\n\tcontext->domain = iommu_domain_alloc(&platform_bus_type);\n\tif (!context->domain) {",
+     "\tratelimit_default_init(&context->ratelimit);\n\n\tcontext->domain = iommu_paging_domain_alloc(&pdev->dev);\n\tif (IS_ERR(context->domain))\n\t\tcontext->domain = NULL;\n\tif (!context->domain) {"),
+
+    # display-drivers: sde_encoder.c needs delay.h (msleep) and dsi_display.h
+    ("display-drivers/msm/sde/sde_encoder.c",
+     '#include "sde_fence.h"\n',
+     '#include "sde_fence.h"\n#include <linux/delay.h>\n#include "dsi_display.h"\n'),
+    ("display-drivers/msm/sde/sde_encoder.c",
+     "\tdsi_display = get_main_display();\n\n"
+     "\tif (!dsi_display || !dsi_display->panel || !dsi_display->panel->cur_mode\n"
+     "\t\t|| !dsi_display->panel->cur_mode->priv_info) {\n"
+     "\t\tSDE_ERROR(\"sde encoder Invalid params(s) dsi_display %pK, panel %pK\\n\",\n"
+     "\t\t\tdsi_display,\n"
+     "\t\t\t((dsi_display) ? dsi_display->panel : NULL));\n"
+     "\t\treturn -EINVAL;\n"
+     "\t}",
+     "#ifdef OPLUS_FEATURE_DISPLAY\n"
+     "\tdsi_display = get_main_display();\n\n"
+     "\tif (!dsi_display || !dsi_display->panel || !dsi_display->panel->cur_mode\n"
+     "\t\t|| !dsi_display->panel->cur_mode->priv_info) {\n"
+     "\t\tSDE_ERROR(\"sde encoder Invalid params(s) dsi_display %pK, panel %pK\\n\",\n"
+     "\t\t\tdsi_display,\n"
+     "\t\t\t((dsi_display) ? dsi_display->panel : NULL));\n"
+     "\t\treturn -EINVAL;\n"
+     "\t}\n"
+     "#endif"),
+    ("display-drivers/msm/sde/sde_encoder.c",
+     "\t    if (!strcmp(dsi_display->panel->name, \"AC190 P 4 A0013 video mode dsi panel\") ||\n"
+     "\t\t    !strcmp(dsi_display->panel->name, \"AC190 P D A0018 video mode dsi panel\") ||\n"
+     "\t\t    !strcmp(dsi_display->panel->name, \"AC190 P D 1 A0018 video mode dsi panel\") ||\n"
+     "\t\t    !strcmp(dsi_display->panel->name, \"td4160 hx alpha l4 video mode dsi panel\") ||\n"
+     "\t\t    !strcmp(dsi_display->panel->name, \"ili9883c boe alpha l4 video mode dsi panel\") ||\n"
+     "\t\t    !strcmp(dsi_display->panel->name, \"td4160 hx alpha b4 video mode dsi panel\") ||\n"
+     "\t\t    !strcmp(dsi_display->panel->name, \"ili9883c boe alpha b4 video mode dsi panel\")) {\n"
+     "\t\t\tSDE_DEBUG(\"dsi_display->panel->name:%s\\n\", dsi_display->panel->name);\n"
+     "\t\t\tif ((rsc_config->fps != mode_info->frame_rate) &&\n"
+     "\t\t\t\tsde_encoder_check_curr_mode(&sde_enc->base,\n"
+     "\t\t\t\t\tMSM_DISPLAY_CMD_MODE)) {\n"
+     "\t\t\t\tsde_encoder_wait_for_event_wakeup(drm_enc, rsc_config->fps);\n"
+     "\t\t\t}\n"
+     "\t    }\n",
+     "#ifdef OPLUS_FEATURE_DISPLAY\n"
+     "\t    if (dsi_display && dsi_display->panel && (!strcmp(dsi_display->panel->name, \"AC190 P 4 A0013 video mode dsi panel\") ||\n"
+     "\t\t    !strcmp(dsi_display->panel->name, \"AC190 P D A0018 video mode dsi panel\") ||\n"
+     "\t\t    !strcmp(dsi_display->panel->name, \"AC190 P D 1 A0018 video mode dsi panel\") ||\n"
+     "\t\t    !strcmp(dsi_display->panel->name, \"td4160 hx alpha l4 video mode dsi panel\") ||\n"
+     "\t\t    !strcmp(dsi_display->panel->name, \"ili9883c boe alpha l4 video mode dsi panel\") ||\n"
+     "\t\t    !strcmp(dsi_display->panel->name, \"td4160 hx alpha b4 video mode dsi panel\") ||\n"
+     "\t\t    !strcmp(dsi_display->panel->name, \"ili9883c boe alpha b4 video mode dsi panel\"))) {\n"
+     "\t\t\tSDE_DEBUG(\"dsi_display->panel->name:%s\\n\", dsi_display->panel->name);\n"
+     "\t\t\tif ((rsc_config->fps != mode_info->frame_rate) &&\n"
+     "\t\t\t\tsde_encoder_check_curr_mode(&sde_enc->base,\n"
+     "\t\t\t\t\tMSM_DISPLAY_CMD_MODE)) {\n"
+     "\t\t\t\tsde_encoder_wait_for_event_wakeup(drm_enc, rsc_config->fps);\n"
+     "\t\t\t}\n"
+     "\t    }\n"
+     "#endif\n"),
+    ("display-drivers/msm/sde/sde_encoder.c",
+     "\tstruct dsi_display *dsi_display = NULL;\n",
+     "\tstruct dsi_display *dsi_display __maybe_unused = NULL;\n"),
+
+    # graphics-kernel: kgsl_pwrctrl.c and adreno_ringbuffer.c undefine QCOM_DCVS on Khaje
+    ("graphics-kernel/kgsl_pwrctrl.c",
+     "#include <soc/qcom/dcvs.h>\n",
+     "#ifdef CONFIG_ARCH_KHAJE\n#undef CONFIG_QCOM_DCVS\n#undef CONFIG_QCOM_DCVS_MODULE\n#endif\n#include <soc/qcom/dcvs.h>\n"),
+    ("graphics-kernel/adreno_ringbuffer.c",
+     "#include <soc/qcom/dcvs.h>\n",
+     "#ifdef CONFIG_ARCH_KHAJE\n#undef CONFIG_QCOM_DCVS\n#undef CONFIG_QCOM_DCVS_MODULE\n#endif\n#include <soc/qcom/dcvs.h>\n"),
+    # graphics-kernel: kgsl_util.c undefine QCOM_VA_MINIDUMP on Khaje
+    ("graphics-kernel/kgsl_util.c",
+     "#include <soc/qcom/minidump.h>\n",
+     "#ifdef CONFIG_ARCH_KHAJE\n#undef CONFIG_QCOM_VA_MINIDUMP\n#undef CONFIG_QCOM_VA_MINIDUMP_MODULE\n#endif\n#include <soc/qcom/minidump.h>\n"),
+
+    # display-drivers: sde_encoder_phys_cmd.c needs linux/delay.h for udelay and usleep_range
+    ("display-drivers/msm/sde/sde_encoder_phys_cmd.c",
+     '#include "sde_encoder_phys.h"\n',
+     '#include <linux/delay.h>\n#include "sde_encoder_phys.h"\n'),
+
+    # graphics-kernel: kgsl_iommu.c of_device.h and get_random_int
+    ("graphics-kernel/kgsl_iommu.c",
+     '#include <linux/random.h>\n',
+     '#include <linux/random.h>\n#include <linux/of_device.h>\n#ifndef get_random_int\n#define get_random_int() get_random_u32()\n#endif\n'),
+
+    # graphics-kernel: kgsl_iommu.c modernize io_pgtable_ops to map_pages / unmap_pages
+    ("graphics-kernel/kgsl_iommu.c",
+     "static int _iopgtbl_unmap(struct kgsl_iommu_pt *pt, u64 gpuaddr, size_t size)\n"
+     "{\n"
+     "\tstruct io_pgtable_ops *ops = pt->pgtbl_ops;\n"
+     "\tint ret = 0;\n\n"
+     "\tif (ops->unmap_pages) {\n"
+     "\t\tret = _iopgtbl_unmap_pages(pt, gpuaddr, size);\n"
+     "\t\tif (ret)\n"
+     "\t\t\treturn ret;\n"
+     "\t\tgoto flush;\n"
+     "\t}\n\n"
+     "\twhile (size) {\n"
+     "\t\tif ((ops->unmap(ops, gpuaddr, PAGE_SIZE, NULL)) != PAGE_SIZE)\n"
+     "\t\t\treturn -EINVAL;\n\n"
+     "\t\tgpuaddr += PAGE_SIZE;\n"
+     "\t\tsize -= PAGE_SIZE;\n"
+     "\t}\n\n"
+     "flush:",
+     "static int _iopgtbl_unmap(struct kgsl_iommu_pt *pt, u64 gpuaddr, size_t size)\n"
+     "{\n"
+     "\tint ret = 0;\n\n"
+     "\tret = _iopgtbl_unmap_pages(pt, gpuaddr, size);\n"
+     "\tif (ret)\n"
+     "\t\treturn ret;\n\n"
+     "flush:"),
+
+    ("graphics-kernel/kgsl_iommu.c",
+     "static size_t _iopgtbl_map_sg(struct kgsl_iommu_pt *pt, u64 gpuaddr,\n"
+     "\t\tstruct sg_table *sgt, int prot)\n"
+     "{\n"
+     "\tstruct io_pgtable_ops *ops = pt->pgtbl_ops;\n"
+     "\tstruct scatterlist *sg;\n"
+     "\tsize_t mapped = 0;\n"
+     "\tu64 addr = gpuaddr;\n"
+     "\tint ret, i;\n\n"
+     "\tif (ops->map_sg) {\n"
+     "\t\tret = ops->map_sg(ops, addr, sgt->sgl, sgt->nents, prot,\n"
+     "\t\t\tGFP_KERNEL, &mapped);\n"
+     "\t\tif (ret) {\n"
+     "\t\t\t_iopgtbl_unmap(pt, gpuaddr, mapped);\n"
+     "\t\t\treturn 0;\n"
+     "\t\t}\n"
+     "\t\treturn mapped;\n"
+     "\t}\n\n"
+     "\tfor_each_sg(sgt->sgl, sg, sgt->nents, i) {\n"
+     "\t\tsize_t size = sg->length;\n"
+     "\t\tphys_addr_t phys = sg_phys(sg);\n\n"
+     "\t\twhile (size) {\n"
+     "\t\t\tret = ops->map(ops, addr, phys, PAGE_SIZE, prot, GFP_KERNEL);\n\n"
+     "\t\t\tif (ret) {\n"
+     "\t\t\t\t_iopgtbl_unmap(pt, gpuaddr, mapped);\n"
+     "\t\t\t\treturn 0;\n"
+     "\t\t\t}\n\n"
+     "\t\t\tphys += PAGE_SIZE;\n"
+     "\t\t\tmapped += PAGE_SIZE;\n"
+     "\t\t\taddr += PAGE_SIZE;\n"
+     "\t\t\tsize -= PAGE_SIZE;\n"
+     "\t\t}\n"
+     "\t}\n\n"
+     "\treturn mapped;\n"
+     "}",
+     "static size_t _iopgtbl_map_sg(struct kgsl_iommu_pt *pt, u64 gpuaddr,\n"
+     "\t\tstruct sg_table *sgt, int prot)\n"
+     "{\n"
+     "\tstruct io_pgtable_ops *ops = pt->pgtbl_ops;\n"
+     "\tstruct scatterlist *sg;\n"
+     "\tsize_t mapped = 0;\n"
+     "\tu64 addr = gpuaddr;\n"
+     "\tint ret, i;\n\n"
+     "\tfor_each_sg(sgt->sgl, sg, sgt->nents, i) {\n"
+     "\t\tsize_t size = sg->length;\n"
+     "\t\tphys_addr_t phys = sg_phys(sg);\n\n"
+     "\t\twhile (size) {\n"
+     "\t\t\tsize_t pgcount = size / PAGE_SIZE;\n"
+     "\t\t\tsize_t map_mapped = 0;\n\n"
+     "\t\t\tret = ops->map_pages(ops, addr, phys, PAGE_SIZE, pgcount, prot, GFP_KERNEL, &map_mapped);\n"
+     "\t\t\tif (ret) {\n"
+     "\t\t\t\t_iopgtbl_unmap(pt, gpuaddr, mapped);\n"
+     "\t\t\t\treturn 0;\n"
+     "\t\t\t}\n\n"
+     "\t\t\tphys += map_mapped;\n"
+     "\t\t\tmapped += map_mapped;\n"
+     "\t\t\taddr += map_mapped;\n"
+     "\t\t\tsize -= map_mapped;\n"
+     "\t\t}\n"
+     "\t}\n\n"
+     "\treturn mapped;\n"
+     "}"),
+
+    ("graphics-kernel/kgsl_iommu.c",
+     "\twhile (range) {\n"
+     "\t\tret = ops->map(ops, addr, page_to_phys(page), PAGE_SIZE,\n"
+     "\t\t\tprot, GFP_KERNEL);",
+     "\twhile (range) {\n"
+     "\t\tsize_t map_mapped = 0;\n\n"
+     "\t\tret = ops->map_pages(ops, addr, page_to_phys(page), PAGE_SIZE,\n"
+     "\t\t\t1, prot, GFP_KERNEL, &map_mapped);"),
+
+    ("graphics-kernel/kgsl_iommu.c",
+     "\t\tint ret = iommu_map(domain, addr, page_to_phys(page),\n"
+     "\t\t\tPAGE_SIZE, prot);",
+     "\t\tint ret = iommu_map(domain, addr, page_to_phys(page),\n"
+     "\t\t\tPAGE_SIZE, prot, GFP_KERNEL);"),
 ]
 
 
@@ -7112,7 +7714,463 @@ def main(argv):
         print(f"k618_tp_fix: {os.path.relpath(path, root)}")
         done += 1
     print(f"k618_tp_fix: {done} of {len(EDITS)} edits applied (the rest were already there)")
+    apply_sm6225_media_fixes(Path(root))
     return 0
+
+
+def apply_sm6225_media_fixes(tp_root: Path) -> None:
+    # 1. Blocker A: Guard against CONFIG_QCOM_DCVS_MODULE in KGSL callers of dcvs.h
+    for rel_path in (
+        "graphics-kernel/kgsl_pwrctrl.c",
+        "graphics-kernel/adreno_ringbuffer.c",
+    ):
+        fpath = tp_root / rel_path
+        if not fpath.is_file():
+            continue
+        src = fpath.read_text(encoding="utf-8", errors="ignore")
+        target_inc = "#include <soc/qcom/dcvs.h>"
+        replacement_inc = (
+            "#ifdef CONFIG_ARCH_KHAJE\n"
+            "#undef CONFIG_QCOM_DCVS\n"
+            "#undef CONFIG_QCOM_DCVS_MODULE\n"
+            "#endif\n"
+            "#include <soc/qcom/dcvs.h>"
+        )
+        if target_inc in src and "#undef CONFIG_QCOM_DCVS_MODULE" not in src:
+            src = src.replace(target_inc, replacement_inc, 1)
+            fpath.write_text(src, encoding="utf-8")
+            print(f"k618_tp_fix: {rel_path} (dcvs guard)")
+
+    # 1b. Guard against CONFIG_QCOM_VA_MINIDUMP_MODULE in kgsl_util.c
+    kgsl_util = tp_root / "graphics-kernel/kgsl_util.c"
+    if kgsl_util.is_file():
+        src = kgsl_util.read_text(encoding="utf-8", errors="ignore")
+        target_inc = "#include <soc/qcom/minidump.h>"
+        replacement_inc = (
+            "#ifdef CONFIG_ARCH_KHAJE\n"
+            "#undef CONFIG_QCOM_VA_MINIDUMP\n"
+            "#undef CONFIG_QCOM_VA_MINIDUMP_MODULE\n"
+            "#endif\n"
+            "#include <soc/qcom/minidump.h>"
+        )
+        if target_inc in src and "#undef CONFIG_QCOM_VA_MINIDUMP_MODULE" not in src:
+            src = src.replace(target_inc, replacement_inc, 1)
+            kgsl_util.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: graphics-kernel/kgsl_util.c (va_minidump guard)")
+
+    # 1d. Guard against CONFIG_QCOM_LLCC_MODULE in adreno.c
+    adreno_c = tp_root / "graphics-kernel/adreno.c"
+    if adreno_c.is_file():
+        src = adreno_c.read_text(encoding="utf-8", errors="ignore")
+        target_check = "#if IS_ENABLED(CONFIG_QCOM_LLCC)"
+        replacement_check = (
+            "#ifdef CONFIG_ARCH_KHAJE\n"
+            "#undef CONFIG_QCOM_LLCC\n"
+            "#undef CONFIG_QCOM_LLCC_MODULE\n"
+            "#endif\n"
+            "#if IS_ENABLED(CONFIG_QCOM_LLCC)"
+        )
+        if target_check in src and "#undef CONFIG_QCOM_LLCC_MODULE" not in src:
+            src = src.replace(target_check, replacement_check, 1)
+            adreno_c.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: graphics-kernel/adreno.c (llcc guard)")
+
+    # 1e. Add <drm/drm_blend.h> in msm_drv.h for drm_rotation_simplify / drm_plane_create_rotation_property
+    msm_drv = tp_root / "display-drivers/msm/msm_drv.h"
+    if msm_drv.is_file():
+        src = msm_drv.read_text(encoding="utf-8", errors="ignore")
+        if "#include <drm/drm_blend.h>" not in src and "#include <drm/drm_framebuffer.h>" in src:
+            src = src.replace(
+                "#include <drm/drm_framebuffer.h>",
+                "#include <drm/drm_framebuffer.h>\n#include <drm/drm_blend.h>",
+                1
+            )
+            msm_drv.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: display-drivers/msm/msm_drv.h (drm_blend.h)")
+
+    # 1f. Modernize memblock_free and remove allow_fb_modifiers in sde_kms.c
+    sde_kms = tp_root / "display-drivers/msm/sde/sde_kms.c"
+    if sde_kms.is_file():
+        src = sde_kms.read_text(encoding="utf-8", errors="ignore")
+        mod = False
+        target_free = "ret = memblock_free(mem_addr, splash_buffer_size);"
+        replacement_free = "memblock_free(phys_to_virt(mem_addr), splash_buffer_size);\n\tret = 0;"
+        if target_free in src:
+            src = src.replace(target_free, replacement_free, 1)
+            mod = True
+        if "allow_fb_modifiers" in src:
+            src = re.sub(r"/\*.*allow_fb_modifiers.*\*/", "", src)
+            src = re.sub(r"[ \t]*dev->mode_config\.allow_fb_modifiers\s*=\s*true;\s*", "\n", src)
+            mod = True
+
+        if mod:
+            sde_kms.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: display-drivers/msm/sde/sde_kms.c (memblock_free / allow_fb_modifiers)")
+
+    # 1g. Guard against CONFIG_QCOM_COMMAND_DB_MODULE in cmd-db.h callers
+    for rel_path in (
+        "graphics-kernel/adreno_a6xx_rpmh.c",
+        "graphics-kernel/adreno_gen7_rpmh.c",
+        "graphics-kernel/adreno_a6xx_gmu.c",
+        "graphics-kernel/adreno_gen7_gmu.c",
+    ):
+        fpath = tp_root / rel_path
+        if not fpath.is_file():
+            continue
+        src = fpath.read_text(encoding="utf-8", errors="ignore")
+        target_inc = "#include <soc/qcom/cmd-db.h>"
+        replacement_inc = (
+            "#ifdef CONFIG_ARCH_KHAJE\n"
+            "#undef CONFIG_QCOM_COMMAND_DB\n"
+            "#undef CONFIG_QCOM_COMMAND_DB_MODULE\n"
+            "#endif\n"
+            "#include <soc/qcom/cmd-db.h>"
+        )
+        if target_inc in src and "#undef CONFIG_QCOM_COMMAND_DB_MODULE" not in src:
+            src = src.replace(target_inc, replacement_inc, 1)
+            fpath.write_text(src, encoding="utf-8")
+            print(f"k618_tp_fix: {rel_path} (cmd-db guard)")
+
+    # 1h. Guard against CONFIG_MSM_PERFORMANCE_MODULE in msm_performance.h callers
+    for rel_path in (
+        "graphics-kernel/adreno_hwsched.c",
+        "graphics-kernel/adreno_gen7_hwsched_hfi.c",
+        "graphics-kernel/adreno_a6xx_hwsched_hfi.c",
+        "graphics-kernel/adreno_dispatch.c",
+    ):
+        fpath = tp_root / rel_path
+        if not fpath.is_file():
+            continue
+        src = fpath.read_text(encoding="utf-8", errors="ignore")
+        target_inc = "#include <soc/qcom/msm_performance.h>"
+        replacement_inc = (
+            "#ifdef CONFIG_ARCH_KHAJE\n"
+            "#undef CONFIG_MSM_PERFORMANCE\n"
+            "#undef CONFIG_MSM_PERFORMANCE_MODULE\n"
+            "#endif\n"
+            "#include <soc/qcom/msm_performance.h>"
+        )
+        if target_inc in src and "#undef CONFIG_MSM_PERFORMANCE_MODULE" not in src:
+            src = src.replace(target_inc, replacement_inc, 1)
+            fpath.write_text(src, encoding="utf-8")
+            print(f"k618_tp_fix: {rel_path} (msm_perf guard)")
+
+    # 1i. Fix of_property_for_each_u32 in sde_io_util.c (3 arguments in 6.6+)
+    sde_io = tp_root / "display-drivers/msm/sde_io_util.c"
+    if sde_io.is_file():
+        src = sde_io.read_text(encoding="utf-8", errors="ignore")
+        old_loop = (
+            "of_property_for_each_u32(pdev->dev.of_node, \"qcom,pmic-arb-address\",\n"
+            "\t\t\tprop, cur, val)"
+        )
+        new_loop = (
+            "of_property_for_each_u32(pdev->dev.of_node, \"qcom,pmic-arb-address\",\n"
+            "\t\t\tval)"
+        )
+        mod = False
+        if old_loop in src:
+            src = src.replace(old_loop, new_loop, 1)
+            mod = True
+        if "struct property *prop;" in src:
+            src = src.replace("struct property *prop;", "struct property *prop __maybe_unused;", 1)
+            mod = True
+        if "const __be32 *cur;" in src:
+            src = src.replace("const __be32 *cur;", "const __be32 *cur __maybe_unused;", 1)
+            mod = True
+
+        if mod:
+            sde_io.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: display-drivers/msm/sde_io_util.c (of_property_for_each_u32)")
+
+    # 1j. Remove obsolete struct_mutex in sde_hw_reg_dma_v1.c
+    reg_dma = tp_root / "display-drivers/msm/sde/sde_hw_reg_dma_v1.c"
+    if reg_dma.is_file():
+        src = reg_dma.read_text(encoding="utf-8", errors="ignore")
+        if "struct_mutex" in src:
+            src = re.sub(r"[ \t]*mutex_(lock|unlock)\(&reg_dma->drm_dev->struct_mutex\);\n?", "", src)
+            reg_dma.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: display-drivers/msm/sde/sde_hw_reg_dma_v1.c (remove struct_mutex)")
+
+    # 1k. Guard proprietary OPlus hacks in dsi_panel.c
+    dsi_panel = tp_root / "display-drivers/msm/dsi/dsi_panel.c"
+    if dsi_panel.is_file():
+        src = dsi_panel.read_text(encoding="utf-8", errors="ignore")
+        mod = False
+
+        # 1k-a. ocp2130_disable block (AE178 / ili9883c)
+        target_ocp = (
+            '\tif (!strcmp(panel->name, "AE178 p 4 A0030 video mode panel")\n'
+            '\t\t||  !strcmp(panel->name, "AE178 p 7 A0030 video mode panel")\n'
+            '\t\t||  !strcmp(panel->name, "ili9883c boe alpha l4 video mode dsi panel")\n'
+            '\t\t||  !strcmp(panel->name, "td4160 hx alpha l4 video mode dsi panel")) {\n'
+        )
+        if target_ocp in src and "#ifdef OPLUS_FEATURE_DISPLAY\n" + target_ocp not in src:
+            old_block = (
+                target_ocp +
+                '\t\tpanel_esd_check_failed = atomic_read(&(panel->esd_recovery_pending));\n'
+                '\t\tif((is_pd_with_guesture == false) || (1 == shutdown_flag) || panel_esd_check_failed) {\n'
+                '\t\t\t\ttp_irq = gpio_to_irq(377);\n'
+                '\t\t\t\tDSI_INFO("[%s][TP] tp gesture is disable, or will shutdown or esd_check failed! need to disable tp-irq and goto power off, tp_irq:%d\\n", __func__, tp_irq);\n'
+                '\t\t\t\tdisable_irq_nosync(tp_irq);\n'
+                '\t\t\t\tDSI_DEBUG("ocp2130_disable panel power off\\n");\n'
+                '\t\t\t\tocp2130_disable();\n'
+                '\t\t}\n'
+                '\t}'
+            )
+            if old_block in src:
+                src = src.replace(old_block, "#ifdef OPLUS_FEATURE_DISPLAY\n" + old_block + "\n#endif", 1)
+                mod = True
+
+        # 1k-b. DSI_CMD_ESD_SWITCH_PAGE / DSI_CMD_ESD_SWITCH_DEFAULT_PAGE
+        old_esd_cmd = (
+            '\t\tif (type == DSI_CMD_SET_VID_SWITCH_OUT ||\n'
+            '\t\t\ttype == DSI_CMD_ESD_SWITCH_PAGE ||\n'
+            '\t\t\ttype == DSI_CMD_ESD_SWITCH_DEFAULT_PAGE )'
+        )
+        new_esd_cmd = (
+            '#ifdef OPLUS_FEATURE_DISPLAY\n'
+            '\t\tif (type == DSI_CMD_SET_VID_SWITCH_OUT ||\n'
+            '\t\t\ttype == DSI_CMD_ESD_SWITCH_PAGE ||\n'
+            '\t\t\ttype == DSI_CMD_ESD_SWITCH_DEFAULT_PAGE )\n'
+            '#else\n'
+            '\t\tif (type == DSI_CMD_SET_VID_SWITCH_OUT)\n'
+            '#endif'
+        )
+        if old_esd_cmd in src:
+            src = src.replace(old_esd_cmd, new_esd_cmd, 1)
+            mod = True
+
+        # 1k-c. ESD_MODE_PANEL_MIPI_ERR_FLAG
+        old_mipi_err = (
+            '#else\n'
+            '\t\t} else if (!strcmp(string, "mipi_err_check")) {\n'
+            '\t\t\tesd_config->status_mode = ESD_MODE_PANEL_MIPI_ERR_FLAG;\n'
+            '\t\t} else {'
+        )
+        new_mipi_err = (
+            '#elif defined(OPLUS_FEATURE_DISPLAY)\n'
+            '\t\t} else if (!strcmp(string, "mipi_err_check")) {\n'
+            '\t\t\tesd_config->status_mode = ESD_MODE_PANEL_MIPI_ERR_FLAG;\n'
+            '#else\n'
+            '\t\t} else {'
+        )
+        if old_mipi_err in src:
+            src = src.replace(old_mipi_err, new_mipi_err, 1)
+            mod = True
+
+        # 1k-d. oplus_panel_pwm_onepulse_is_enabled
+        old_onepulse = (
+            '\tif ((!strcmp(panel->name, "AC166 P 3 A0013 video mode dsi panel")\n'
+            '\t\t||  !strcmp(panel->name, "AC166 P D A0018 video mode dsi panel")) \n'
+            '\t\t&& oplus_panel_pwm_onepulse_is_enabled(panel)) {\n'
+            '\t\toplus_sde_early_wakeup(panel);\n'
+            '\t\toplus_wait_for_vsync(panel);\n'
+            '\t}'
+        )
+        if old_onepulse in src:
+            src = src.replace(old_onepulse, "#ifdef OPLUS_FEATURE_DISPLAY\n" + old_onepulse + "\n#endif", 1)
+            mod = True
+
+        old_macro = (
+            "#define OPLUS_PANEL_EVENT_NOTIFY_FOR_TOUCH(tp_index, data) { \\\n"
+            "\tint blank = data; \\\n"
+            "\tenum panel_event_notifier_tag panel_type = (tp_index == 0) ? PANEL_EVENT_NOTIFICATION_PRIMARY : PANEL_EVENT_NOTIFICATION_SECONDARY; \\\n"
+            "\tstruct panel_event_notification notification; \\\n"
+            "\tnotification.notif_type = DRM_PANEL_EVENT_FOR_TOUCH; \\\n"
+            "\tnotification.panel = &panel->drm_panel; \\\n"
+            "\tnotification.notif_data.lcd_ctl_blank = &blank; \\\n"
+            "\tpanel_event_notification_trigger(panel_type, &notification); \\\n"
+            "}"
+        )
+        new_macro = (
+            "#if IS_ENABLED(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)\n"
+            + old_macro + "\n"
+            "#else\n"
+            "#define OPLUS_PANEL_EVENT_NOTIFY_FOR_TOUCH(tp_index, data) do { } while (0)\n"
+            "#endif"
+        )
+        if old_macro in src and "#if IS_ENABLED(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)" not in src:
+            src = src.replace(old_macro, new_macro, 1)
+            mod = True
+
+        old_tp = (
+            "extern int (*tp_gesture_enable_notifier)(unsigned int tp_index);\n"
+            "extern int shutdown_flag;"
+        )
+        new_tp = (
+            "#ifndef OPLUS_FEATURE_DISPLAY\n"
+            "int (*tp_gesture_enable_notifier)(unsigned int tp_index) = NULL;\n"
+            "int shutdown_flag = 0;\n"
+            "#else\n"
+            "extern int (*tp_gesture_enable_notifier)(unsigned int tp_index);\n"
+            "extern int shutdown_flag;\n"
+            "#endif"
+        )
+        if old_tp in src:
+            src = src.replace(old_tp, new_tp, 1)
+            mod = True
+
+        if mod:
+            dsi_panel.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: display-drivers/msm/dsi/dsi_panel.c (oplus guards)")
+
+    # 1l. Omit OPlus proprietary display objects from msm_drm on SM6225 and link mi_disp_k618.o
+    msm_kbuild = tp_root / "display-drivers/msm/Kbuild"
+    if msm_kbuild.is_file():
+        src = msm_kbuild.read_text(encoding="utf-8", errors="ignore")
+        src_new = re.sub(
+            r"#ifdef OPLUS_FEATURE_DISPLAY.*?#endif /\* OPLUS_FEATURE_DISPLAY \*/\s*\n",
+            "",
+            src,
+            flags=re.DOTALL,
+        )
+        if "mi_disp_k618.o" not in src_new:
+            src_new += "\n# k618: Xiaomi's display extension (k618_mi_disp.c)\nmsm_drm-y += mi_disp_k618.o\n"
+        if src_new != src:
+            msm_kbuild.write_text(src_new, encoding="utf-8")
+            print("k618_tp_fix: display-drivers/msm/Kbuild (strip oplus objects, add mi_disp_k618)")
+
+    # 1m. Modernize msm_drv.c for 6.18
+    msm_drv_c = tp_root / "display-drivers/msm/msm_drv.c"
+    if msm_drv_c.is_file():
+        src = msm_drv_c.read_text(encoding="utf-8", errors="ignore")
+        src_orig = src
+        # Delete lines referencing fields removed from 6.18
+        src = re.sub(r"^[ \t]*.*\.output_poll_changed.*$\n?", "", src, flags=re.MULTILINE)
+        src = re.sub(r"^[ \t]*.*\.lastclose.*$\n?", "", src, flags=re.MULTILINE)
+        src = re.sub(r"^[ \t]*.*\.gem_prime_mmap.*$\n?", "", src, flags=re.MULTILINE)
+        src = re.sub(r'^[ \t]*.*\.date.*"20130625".*$\n?', "", src, flags=re.MULTILINE)
+        # Mark unused static function as __maybe_unused
+        src = re.sub(r"static void\s+msm_fb_output_poll_changed\(struct drm_device \*dev\)",
+                     "static void __maybe_unused msm_fb_output_poll_changed(struct drm_device *dev)", src)
+        if "static int compare_name_mdp(struct device *dev, void *data)" in src:
+            src = src.replace("static int compare_name_mdp(struct device *dev, void *data)", "static int compare_name_mdp(struct device *dev, const void *data)", 1)
+        if 'MODULE_IMPORT_NS("DMA_BUF");' not in src:
+            src = src.replace('MODULE_LICENSE("GPL");', 'MODULE_IMPORT_NS("DMA_BUF");\nMODULE_LICENSE("GPL");', 1)
+        if src != src_orig:
+            msm_drv_c.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: display-drivers/msm/msm_drv.c (modernize 6.18)")
+
+    # 1n. Modernize msm_gem.c vm_flags for 6.18
+    msm_gem_c = tp_root / "display-drivers/msm/msm_gem.c"
+    if msm_gem_c.is_file():
+        src = msm_gem_c.read_text(encoding="utf-8", errors="ignore")
+        old_vm = (
+            "\tvma->vm_flags &= ~VM_PFNMAP;\n"
+            "\tvma->vm_flags |= VM_MIXEDMAP;"
+        )
+        new_vm = (
+            "\tvm_flags_clear(vma, VM_PFNMAP);\n"
+            "\tvm_flags_set(vma, VM_MIXEDMAP);"
+        )
+        if old_vm in src:
+            src = src.replace(old_vm, new_vm, 1)
+            msm_gem_c.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: display-drivers/msm/msm_gem.c (vm_flags_set)")
+
+    # 1c. Ensure <linux/delay.h> in sde_encoder_phys_cmd.c
+    cmd_enc = tp_root / "display-drivers/msm/sde/sde_encoder_phys_cmd.c"
+    if cmd_enc.is_file():
+        src = cmd_enc.read_text(encoding="utf-8", errors="ignore")
+        if "#include <linux/delay.h>" not in src:
+            src = '#include <linux/delay.h>\n' + src
+            cmd_enc.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: display-drivers/msm/sde/sde_encoder_phys_cmd.c (delay.h)")
+
+    # 1o. Add Xiaomi MI cmd sets to dsi_defs.h and dsi_panel.c
+    ALL_MI_CMDS = MI_CMD_SETS + MI_FOD_CMD_SETS + MI_M1_CMD_SETS + MI_U62_CMD_SETS
+    dsi_defs = tp_root / "display-drivers/msm/dsi/dsi_defs.h"
+    if dsi_defs.is_file():
+        src = dsi_defs.read_text(encoding="utf-8", errors="ignore")
+        if "DSI_CMD_SET_MI_DIMMINGON" not in src:
+            enum_str = "".join(f"\t{e},\n" for e, _ in ALL_MI_CMDS)
+            src = src.replace("\tDSI_CMD_SET_MAX\n", enum_str + "\tDSI_CMD_SET_MAX\n", 1)
+            dsi_defs.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: display-drivers/msm/dsi/dsi_defs.h (add Xiaomi MI cmd enum)")
+
+    dsi_panel = tp_root / "display-drivers/msm/dsi/dsi_panel.c"
+    if dsi_panel.is_file():
+        src = dsi_panel.read_text(encoding="utf-8", errors="ignore")
+        if "mi,mdss-dsi-dimmingon-command" not in src:
+            prop_str = "".join(f'\t"{p}",\n' for _, p in ALL_MI_CMDS)
+            state_str = "".join(f'\t"{p}-state",\n' for _, p in ALL_MI_CMDS)
+            prop_anchor = '\t"qcom,mdss-dsi-skipframe-dbv-command",\n};'
+            if prop_anchor in src:
+                src = src.replace(prop_anchor, '\t"qcom,mdss-dsi-skipframe-dbv-command",\n' + prop_str + '};', 1)
+            state_anchor = '\t"qcom,mdss-dsi-skipframe-dbv-command-state",\n};'
+            if state_anchor in src:
+                src = src.replace(state_anchor, '\t"qcom,mdss-dsi-skipframe-dbv-command-state",\n' + state_str + '};', 1)
+            dsi_panel.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: display-drivers/msm/dsi/dsi_panel.c (add Xiaomi MI cmd maps)")
+
+    # 2. Blocker B: Fix missing <linux/delay.h> and unguarded OPLUS_FEATURE_DISPLAY blocks in sde_encoder.c
+    sde_enc = tp_root / "display-drivers/msm/sde/sde_encoder.c"
+    if sde_enc.is_file():
+        src = sde_enc.read_text(encoding="utf-8", errors="ignore")
+        modified = False
+
+        # 2a. Ensure <linux/delay.h> is included for msleep(4)
+        if "#include <linux/delay.h>" not in src:
+            src = "#include <linux/delay.h>\n" + src
+            modified = True
+
+        # 2b. Mark any local `struct dsi_display *dsi_display` declarations __maybe_unused
+        src_new = re.sub(
+            r"\bstruct\s+dsi_display\s+\*\s*dsi_display\b(?!\s*__maybe_unused)",
+            "struct dsi_display *dsi_display __maybe_unused",
+            src,
+        )
+        if src_new != src:
+            src = src_new
+            modified = True
+
+        # 2c. Guard unguarded get_main_display() blocks (lines ~1680 and ~1751)
+        lines = src.splitlines(keepends=True)
+        out_lines = []
+        i = 0
+        in_oplus_ifdef = 0
+        while i < len(lines):
+            line = lines[i]
+            stripped = line.strip()
+            if stripped.startswith("#ifdef OPLUS_FEATURE_DISPLAY") or stripped.startswith(
+                "#if defined(OPLUS_FEATURE_DISPLAY)"
+            ):
+                in_oplus_ifdef += 1
+            elif stripped.startswith("#if"):
+                if in_oplus_ifdef > 0:
+                    in_oplus_ifdef += 1
+            elif stripped.startswith("#endif"):
+                if in_oplus_ifdef > 0:
+                    in_oplus_ifdef -= 1
+
+            # Detect unguarded `dsi_display = get_main_display();`
+            if "dsi_display = get_main_display();" in line and in_oplus_ifdef == 0:
+                out_lines.append("#ifdef OPLUS_FEATURE_DISPLAY\n")
+                out_lines.append(line)
+                i += 1
+                brace_depth = 0
+                seen_panel_check = False
+                while i < len(lines):
+                    cur = lines[i]
+                    out_lines.append(cur)
+                    if "dsi_display->panel" in cur:
+                        seen_panel_check = True
+                    brace_depth += cur.count("{") - cur.count("}")
+                    i += 1
+                    if seen_panel_check and brace_depth <= 0 and cur.strip().endswith("}"):
+                        lookahead = "".join(lines[i : min(i + 4, len(lines))])
+                        if "dsi_display" not in lookahead:
+                            break
+                out_lines.append("#endif /* OPLUS_FEATURE_DISPLAY */\n")
+                modified = True
+                continue
+
+            out_lines.append(line)
+            i += 1
+
+        if modified:
+            sde_enc.write_text("".join(out_lines), encoding="utf-8")
+            print("k618_tp_fix: display-drivers/msm/sde/sde_encoder.c (oplus guards)")
 
 
 if __name__ == "__main__":

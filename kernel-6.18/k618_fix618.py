@@ -48,6 +48,21 @@ EDITS = [
     # ufshcd_config_pwr_mode() takes a policy; 6.12's changed the mode only if it differed
     (re.compile(r"\bufshcd_config_pwr_mode\(\s*([^,()]+),\s*([^,()]+)\)"),
      r"ufshcd_config_pwr_mode(\1, \2, UFSHCD_PMC_POLICY_DONT_FORCE)"),
+    (re.compile(r"\bstrlcpy\b"), "strscpy"),
+    (re.compile(r"\bmin_buffers_needed\b"), "min_queued_buffers"),
+    (re.compile(r"\b__assign_str\(\s*(\w+)\s*,[^;)]*?\)"), r"__assign_str(\1)"),
+    (re.compile(r"\bof_match_device\(\s*([^,]+?)\s*,\s*&?([^)]+?)->dev\s*\)"), r"of_match_node(\1, (\2)->dev.of_node)"),
+    (re.compile(r"\bof_match_device\(\s*([^,]+?)\s*,\s*([^)]+?)\s*\)"), r"of_match_node(\1, (\2)->of_node)"),
+    (re.compile(r"\bclass_create\(\s*THIS_MODULE\s*,\s*"), "class_create("),
+    (re.compile(r"\bcurrent->mm->get_unmapped_area\("), "mm_get_unmapped_area(current->mm, "),
+    (re.compile(r"\bstrtobool\b"), "kstrtobool"),
+    (re.compile(r"<drm/drm_dsc\.h>"), "<drm/display/drm_dsc.h>"),
+    (re.compile(r"<drm/drm_dsc_helper\.h>"), "<drm/display/drm_dsc_helper.h>"),
+    (re.compile(r"<drm/drm_dp_helper\.h>"), "<drm/display/drm_dp_helper.h>"),
+    (re.compile(r"<drm/drm_dp_mst_helper\.h>"), "<drm/display/drm_dp_mst_helper.h>"),
+    (re.compile(r"<drm/drm_hdcp\.h>"), "<drm/display/drm_hdcp.h>"),
+    (re.compile(r"<drm/drm_hdcp_helper\.h>"), "<drm/display/drm_hdcp_helper.h>"),
+    (re.compile(r"<stdarg\.h>"), "<linux/stdarg.h>"),
 ]
 NTH = "#define __k618_nth_page(page, n) ((page) + (n))\n"
 

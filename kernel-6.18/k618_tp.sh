@@ -140,10 +140,10 @@ REPOS=(
 # once a preceding media layer passes its compile gate.
 if [ "${TAPAS_OPLUS:-0}" = 1 ]; then
 	REPOS=(
-		"display|display-drivers|DISPLAY_ROOT=%D CONFIG_DRM_MSM=m CONFIG_ARCH_KHAJE=y|-I%T/securemsm-kernel/include -I%T/securemsm-kernel/include/linux -I%T/mm-drivers/msm_ext_display/include|-DCONFIG_ARCH_KHAJE=1 -DCONFIG_DRM_MSM=1"
+		"display|display-drivers|DISPLAY_ROOT=%D CONFIG_DRM_MSM=m CONFIG_ARCH_KHAJE=y CONFIG_DRM_OPLUS=n CONFIG_DRM_OPLUS_NOTIFY=n|%T/securemsm-kernel/include %T/securemsm-kernel/include/linux %T/mm-drivers/msm_ext_display/include|-DCONFIG_ARCH_KHAJE=1 -DCONFIG_DRM_MSM=1"
 		"graphics|graphics-kernel|KGSL_PATH=%D CONFIG_ARCH_KHAJE=y CONFIG_QCOM_KGSL=m CONFIG_ARM_SMMU=m|%M|-DCONFIG_ARCH_KHAJE=1 -DCONFIG_QCOM_KGSL=1 -DCONFIG_ARM_SMMU=1"
-		"camera|camera-kernel|CAMERA_KERNEL_ROOT=%D KERNEL_ROOT=%W/common MODNAME=camera CONFIG_ARCH_KHAJE=y CONFIG_ARCH_BENGAL=y|-I%T/securemsm-kernel/include -I%T/securemsm-kernel/include/linux|-DCONFIG_ARCH_KHAJE=1 -DCONFIG_ARCH_BENGAL=1"
-		"video|video-driver|VIDEO_ROOT=%D CONFIG_ARCH_KHAJE=y|-I%T/securemsm-kernel/include -I%T/securemsm-kernel/include/linux|-DCONFIG_ARCH_KHAJE=1"
+		"camera|camera-kernel|CAMERA_KERNEL_ROOT=%D KERNEL_ROOT=%W/common MODNAME=camera CONFIG_ARCH_KHAJE=y CONFIG_ARCH_BENGAL=y|%T/securemsm-kernel/include %T/securemsm-kernel/include/linux|-DCONFIG_ARCH_KHAJE=1 -DCONFIG_ARCH_BENGAL=1"
+		"video|video-driver|VIDEO_ROOT=%D CONFIG_ARCH_KHAJE=y|%T/securemsm-kernel/include %T/securemsm-kernel/include/linux|-DCONFIG_ARCH_KHAJE=1"
 		"audio|audio-kernel|AUDIO_ROOT=%D MODNAME=audio_dlkm CONFIG_ARCH_KHAJE=y|%M|-DCONFIG_ARCH_KHAJE=1"
 		"wlan|wlan/qcacld-3.0|WLAN_ROOT=%D WLAN_COMMON_ROOT=../qca-wifi-host-cmn MODNAME=kiwi_v2 DEVNAME=kiwi_v2 WLAN_PROFILE=kiwi_v2 CONFIG_ARCH_KHAJE=y CONFIG_QCA_CLD_WLAN=m|%R|-DCONFIG_ARCH_KHAJE=1"
 		"wlan_platform|wlan/platform|WLAN_PLATFORM_ROOT=%D CONFIG_ARCH_KHAJE=y CONFIG_CNSS2=m CONFIG_CNSS_UTILS=m CONFIG_CNSS_GENL=m CONFIG_WCNSS_MEM_PRE_ALLOC=m CONFIG_CNSS2_QMI=y CONFIG_CNSS_QMI_SVC=m CONFIG_CNSS_PLAT_IPC_QMI_SVC=m CONFIG_CNSS_OUT_OF_TREE=y CONFIG_PCI_MSM=y|%R|-DCONFIG_ARCH_KHAJE=1"
@@ -191,13 +191,174 @@ awk -v arch="CONFIG_ARCH_$TP_ARCH" '/^#ifndef CONFIG_ARCH_/ && $2 != arch { skip
      /^#ifndef CONFIG_LEDS_QCOM_FLASH(_MODULE)?$/ { skip = 3 }
      /^#ifndef CONFIG_MSM_TMECOM_QMP(_MODULE)?$/ { skip = 3 }
      /^#ifndef CONFIG_QCOM_WCD_USBSS_I2C(_MODULE)?$/ { skip = 3 }
+     /^#ifndef CONFIG_QCOM_DCVS(_MODULE)?$/ { skip = 3 }
+     /^#ifndef CONFIG_QCOM_VA_MINIDUMP(_MODULE)?$/ { skip = 3 }
+     /^#ifndef CONFIG_QCOM_LLCC(_MODULE)?$/ { skip = 3 }
+     /^#ifndef CONFIG_QCOM_COMMAND_DB(_MODULE)?$/ { skip = 3 }
+     /^#ifndef CONFIG_MSM_PERFORMANCE(_MODULE)?$/ { skip = 3 }
+     /^#ifndef CONFIG_QCOM_PANEL_EVENT_NOTIFIER(_MODULE)?$/ { skip = 3 }
      skip { skip--; next } { print }' \
 	$S/gen/autoconf_vendor.h > $TPCONF
+cat >> $TPCONF <<'EOF'
+/* SM6225 (Khaje/Bengal) does not use QCOM HW DCVS, VA Minidump, LLCC, Command DB, MSM Performance, or OPlus proprietary display hooks */
+#undef CONFIG_QCOM_DCVS
+#undef CONFIG_QCOM_DCVS_MODULE
+#undef CONFIG_QCOM_VA_MINIDUMP
+#undef CONFIG_QCOM_VA_MINIDUMP_MODULE
+#undef CONFIG_QCOM_LLCC
+#undef CONFIG_QCOM_LLCC_MODULE
+#undef CONFIG_QCOM_COMMAND_DB
+#undef CONFIG_QCOM_COMMAND_DB_MODULE
+#undef CONFIG_MSM_PERFORMANCE
+#undef CONFIG_MSM_PERFORMANCE_MODULE
+#undef CONFIG_QCOM_PANEL_EVENT_NOTIFIER
+#undef CONFIG_QCOM_PANEL_EVENT_NOTIFIER_MODULE
+#define DRM_PANEL_EVENT_FOR_TOUCH 5
+#undef OPLUS_FEATURE_DISPLAY
+#undef CONFIG_OPLUS_FEATURE_DISPLAY
+#include <linux/delay.h>
+#include <linux/iosys-map.h>
+#define dma_buf_map iosys_map
+#define DMA_BUF_MAP_INIT_VADDR IOSYS_MAP_INIT_VADDR
+#define dma_buf_map_set_vaddr iosys_map_set_vaddr
+#define dma_buf_map_is_null iosys_map_is_null
+#define dma_buf_map_is_set iosys_map_is_set
+#include <linux/vmalloc.h>
+#include <linux/pinctrl/consumer.h>
+#include <linux/pwm.h>
+#ifndef devm_of_pwm_get
+#define devm_of_pwm_get(dev, np, con_id) devm_fwnode_pwm_get((dev), of_fwnode_handle(np), (con_id))
+#endif
+#include <drm/drm_edid.h>
+#include <linux/of_platform.h>
+#define no_llseek noop_llseek
+#define DRM_UNLOCKED 0
+#define iommu_present(bus) (true)
+#include <linux/dma-resv.h>
+static inline struct dma_fence *k618_dma_resv_get_excl(struct dma_resv *resv)
+{
+	struct dma_fence *fence = NULL;
+	if (resv)
+		dma_resv_get_singleton(resv, DMA_RESV_USAGE_WRITE, &fence);
+	return fence;
+}
+#define dma_resv_get_excl_unlocked(resv) k618_dma_resv_get_excl(resv)
+#define drm_atomic_set_fence_for_plane(state, fence) do { (state)->fence = (fence); } while (0)
+#define drm_bridge_chain_disable(b) drm_atomic_bridge_chain_disable((b), old_state)
+#define drm_bridge_chain_post_disable(b) drm_atomic_bridge_chain_post_disable((b), old_state)
+#define drm_bridge_chain_pre_enable(b) drm_atomic_bridge_chain_pre_enable((b), old_state)
+#define drm_bridge_chain_enable(b) drm_atomic_bridge_chain_enable((b), old_state)
+#ifndef SOCINFO_FC_UNKNOWN
+#define SOCINFO_FC_UNKNOWN 0
+#endif
+EOF
+[ -f "$S/include/stdarg.h" ] || echo "#include <linux/stdarg.h>" > "$S/include/stdarg.h"
+mkdir -p "$S/include/drm"
+for _h in drm_dsc drm_dsc_helper drm_dp_helper drm_dp_mst_helper drm_hdcp drm_hdcp_helper; do
+	[ -f "$S/include/drm/$_h.h" ] || echo "#include <drm/display/$_h.h>" > "$S/include/drm/$_h.h"
+done
 SYMS=$S/Module.symvers
 [ -f "$SYMS" ] || { echo "no soc Module.symvers: build the soc modules first"; exit 1; }
 # earlier runs' symbols, each once: modpost refuses a module that two of the files name
 addsym() { case " $SYMS " in *" $1 "*) ;; *) SYMS="$SYMS $1";; esac; }
 for f in $LOG/*.symvers; do [ -f "$f" ] && addsym "$f"; done
+mkdir -p "$S/include/soc/qcom"
+if [ ! -f "$S/include/soc/qcom/boot_stats.h" ]; then
+	cat > "$S/include/soc/qcom/boot_stats.h" <<'EOF'
+#ifndef _SOC_QCOM_BOOT_STATS_H_
+#define _SOC_QCOM_BOOT_STATS_H_
+static inline void place_marker(const char *name) {}
+#endif
+EOF
+fi
+mkdir -p "$S/include/linux/soc/qcom"
+if [ ! -f "$S/include/linux/soc/qcom/msm_hw_fence.h" ]; then
+	cat > "$S/include/linux/soc/qcom/msm_hw_fence.h" <<'EOF'
+#ifndef _MSM_HW_FENCE_H_
+#define _MSM_HW_FENCE_H_
+
+#include <linux/types.h>
+#include <linux/err.h>
+#include <linux/dma-fence.h>
+#include <dt-bindings/mailbox/qcom-ipcc.h>
+
+#ifndef IPCC_CLIENT_GPU
+#define IPCC_CLIENT_GPU 9
+#endif
+#ifndef IPCC_CLIENT_APSS
+#define IPCC_CLIENT_APSS 8
+#endif
+
+#define MSM_HW_FENCE_FLAG_ENABLED_BIT 3
+#define MSM_HW_FENCE_RESET_WITHOUT_ERROR   BIT(0)
+#define MSM_HW_FENCE_RESET_WITHOUT_DESTROY BIT(1)
+
+enum hw_fence_client_id {
+	HW_FENCE_CLIENT_ID_CTX0,
+	HW_FENCE_CLIENT_ID_CTL0,
+	HW_FENCE_CLIENT_ID_CTL1,
+	HW_FENCE_CLIENT_ID_CTL2,
+	HW_FENCE_CLIENT_ID_CTL3,
+	HW_FENCE_CLIENT_ID_CTL4,
+	HW_FENCE_CLIENT_ID_CTL5,
+	HW_FENCE_CLIENT_MAX,
+};
+
+struct msm_hw_fence_mem_addr {
+	void *virtual_addr;
+	phys_addr_t device_addr;
+	size_t size;
+	void *mem_data;
+};
+
+struct msm_hw_fence_hfi_queue_table_header {
+	u32 version;
+	u32 size;
+	u32 qhdr0_offset;
+	u32 qhdr_size;
+	u32 num_q;
+	u32 num_active_q;
+};
+
+struct msm_hw_fence_hfi_queue_header {
+	u32 status;
+	phys_addr_t start_addr;
+	u32 type;
+	u32 queue_size;
+	u32 pkt_size;
+	u32 pkt_drop_cnt;
+	u32 rx_wm;
+	u32 tx_wm;
+	u32 rx_req;
+	u32 tx_req;
+	u32 rx_irq_status;
+	u32 tx_irq_status;
+	u32 read_index;
+	u32 write_index;
+};
+
+struct msm_hw_fence_create_params {
+	struct dma_fence *fence;
+	u64 *handle;
+};
+
+static inline void *msm_hw_fence_register(enum hw_fence_client_id client_id,
+	struct msm_hw_fence_mem_addr *mem_descriptor) { return ERR_PTR(-EOPNOTSUPP); }
+static inline int msm_hw_fence_deregister(void *client_handle) { return 0; }
+static inline int msm_hw_fence_create(void *client_handle,
+	struct msm_hw_fence_create_params *params) { return -EOPNOTSUPP; }
+static inline int msm_hw_fence_destroy(void *client_handle,
+	struct dma_fence *fence) { return 0; }
+static inline int msm_hw_fence_wait_update(void *client_handle,
+	struct dma_fence **fence_list, u32 num_fences, bool create) { return -EOPNOTSUPP; }
+static inline int msm_hw_fence_reset_client(void *client_handle, u32 reset_flags) { return 0; }
+static inline int msm_hw_fence_update_txq(void *client_handle, u64 handle, u64 flags, u32 error) { return -EOPNOTSUPP; }
+static inline int msm_hw_fence_trigger_signal(void *client_handle,
+	u32 tx_client_id, u32 rx_client_id, u32 signal_id) { return -EOPNOTSUPP; }
+
+#endif /* _MSM_HW_FENCE_H_ */
+EOF
+fi
 ok=0; bad=0
 for entry in "${REPOS[@]}"; do
 	IFS='|' read -r name dir vars incs defs <<<"$entry"
@@ -216,7 +377,7 @@ for entry in "${REPOS[@]}"; do
 	for v in vars incs defs; do
 		eval "$v=\${$v//%D/\$D}; $v=\${$v//%P/\$(dirname \$D)}; $v=\${$v//%T/\$TP}; $v=\${$v//%W/\$W/common}"
 	done
-	EI=; for i in $incs; do EI="$EI -I$i"; done
+	EI=; for i in $incs; do case "$i" in -I*) EI="$EI $i";; *) EI="$EI -I$i";; esac; done
 	# CLEAN=1: drop this repo's build products first. A run that failed with wrong make variables can
 	# leave a .cmd file kbuild then chokes on ("missing separator")
 	[ -n "${CLEAN:-}" ] && find $D \( -name '*.o' -o -name '*.ko' -o -name '.*.cmd' -o -name '*.mod' \
@@ -229,11 +390,15 @@ for entry in "${REPOS[@]}"; do
 	# KERNEL_SRC / KERNEL_ROOT: the kernel tree, which their Kbuilds reach into for a few
 	# kernel-internal headers (regmap's internal.h, the clock drivers); Qualcomm's own Makefile
 	# wrapper passes them, and calling make directly does not
+	TP_UFLAGS=""
+	if [ "${TP_ARCH:-}" = "KHAJE" ] || [ "${TAPAS_OPLUS:-0}" = "1" ]; then
+		TP_UFLAGS="-UCONFIG_QCOM_DCVS -UCONFIG_QCOM_DCVS_MODULE -UCONFIG_QCOM_VA_MINIDUMP -UCONFIG_QCOM_VA_MINIDUMP_MODULE -UCONFIG_QCOM_LLCC -UCONFIG_QCOM_LLCC_MODULE -UCONFIG_QCOM_COMMAND_DB -UCONFIG_QCOM_COMMAND_DB_MODULE -UCONFIG_MSM_PERFORMANCE -UCONFIG_MSM_PERFORMANCE_MODULE -UCONFIG_QCOM_PANEL_EVENT_NOTIFIER -UCONFIG_QCOM_PANEL_EVENT_NOTIFIER_MODULE -UOPLUS_FEATURE_DISPLAY -UCONFIG_OPLUS_FEATURE_DISPLAY"
+	fi
 	make -C $W/common O=$O ARCH=arm64 LLVM=1 LLVM_IAS=1 M=$D modules -j$J \
 		KERNEL_SRC=$W/common KERNEL_ROOT=$W/common \
 		CONFIG_ARCH_$TP_ARCH=y KBUILD_EXTRA_SYMBOLS="$SYMS" \
 		NOSTDINC_FLAGS="-nostdinc -I$S/include -I$S/include/uapi$EI" \
-		KCFLAGS="-Wno-error -include $TPCONF $defs" $vars > $LOG/$name.log 2>&1
+		KCFLAGS="-Wno-error -include $TPCONF $TP_UFLAGS $defs" $vars > $LOG/$name.log 2>&1
 	rc=$?
 	n=$(find $D -name '*.ko' | wc -l)
 	echo "$name: make exit $rc in $(( $(date +%s) - start )) s, $n modules"

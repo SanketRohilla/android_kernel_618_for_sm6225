@@ -12,3 +12,7 @@ S=$K618/soc
 R=$W/prebuilts/rust-toolchain/linux-x86/1.91.1.p3
 CLANG=$W/prebuilts/clang/host/linux-x86/clang-r584948c/bin
 TOOLS=$W/prebuilts/kernel-build-tools/linux_musl-x86/bin
+if [ -d "$HOME/.local/libelf" ]; then
+	export CPATH="$HOME/.local/libelf/include${CPATH:+:$CPATH}"
+	export LIBRARY_PATH="$HOME/.local/libelf/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
+fi

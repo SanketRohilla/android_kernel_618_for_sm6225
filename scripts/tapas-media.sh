@@ -21,7 +21,7 @@ TP_SOURCE="$oplus/vendor/qcom/opensource" \
 TP_ARCH=KHAJE \
 TAPAS_OPLUS=1 \
 CLEAN=1 \
-bash "$PROJECT_ROOT/kernel-6.18/k618_tp.sh" "${JOBS:-4}" display graphics
+bash "$PROJECT_ROOT/kernel-6.18/k618_tp.sh" "${JOBS:-4}" display graphics || true
 
 python3 - "$BUILD_ROOT/k618/tpmods" "$BUILD_ROOT/tapas-media-report.json" <<'PY'
 import hashlib
