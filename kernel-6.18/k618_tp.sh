@@ -140,6 +140,7 @@ REPOS=(
 # once a preceding media layer passes its compile gate.
 if [ "${TAPAS_OPLUS:-0}" = 1 ]; then
 	REPOS=(
+		"touch|touch-drivers|TOUCH_ROOT=%D CONFIG_ARCH_KHAJE=y CONFIG_MSM_TOUCH=m|%T/touch-drivers/include|-DCONFIG_ARCH_KHAJE=1 -DCONFIG_MSM_TOUCH=1"
 		"securemsm|securemsm-kernel|SSG_MODULE_ROOT=%D CONFIG_DISABLE_TEST_MODULES=y CONFIG_ARCH_KHAJE=y|%T/securemsm-kernel/include %T/securemsm-kernel/include/linux|-DCONFIG_ARCH_KHAJE=1"
 		"rmnet_core|datarmnet/core|RMNET_CORE_ROOT=%D CONFIG_ARCH_KHAJE=y|%R|-DCONFIG_ARCH_KHAJE=1"
 		"rmnet_wlan|datarmnet-ext/wlan|RMNET_CORE_INC_DIR=%T/datarmnet/core CONFIG_ARCH_KHAJE=y|%R|-DCONFIG_ARCH_KHAJE=1"
@@ -247,6 +248,15 @@ static inline int of_get_gpio(const struct device_node *np, int index)
 {
 	return of_get_named_gpio(np, "gpios", index);
 }
+enum of_gpio_flags {
+	OF_GPIO_ACTIVE_LOW = 0x1,
+	OF_GPIO_SINGLE_ENDED = 0x2,
+};
+static inline int of_get_named_gpio_flags(const struct device_node *np,
+		const char *list_name, int index, enum of_gpio_flags *flags)
+{
+	return of_get_named_gpio(np, list_name, index);
+}
 static inline void gpio_free_array(const struct gpio *array, size_t num)
 {
 	size_t i;
@@ -294,6 +304,7 @@ static inline void k618_skb_frag_set_page(skb_frag_t *frag, struct page *page)
 #ifndef random_ether_addr
 #define random_ether_addr(addr) eth_random_addr(addr)
 #endif
+
 #include <linux/delay.h>
 #include <linux/iosys-map.h>
 #define dma_buf_map iosys_map
@@ -539,6 +550,11 @@ for entry in "${REPOS[@]}"; do
 	ok=$((ok+1))
 	[ -f $D/Module.symvers ] && cp $D/Module.symvers $LOG/$name.symvers && addsym "$LOG/$name.symvers"
 	find $D -name '*.ko' -exec cp {} $OUTM/ \;
+	if [ "$name" = "touch" ]; then
+		[ -f "$OUTM/focaltech_fts_i2c.ko" ] && cp -f "$OUTM/focaltech_fts_i2c.ko" "$OUTM/focaltech_ts_i2c.ko"
+		[ -f "$OUTM/xiaomi_touch.ko" ] && cp -f "$OUTM/xiaomi_touch.ko" "$OUTM/xiaomi_touch_game.ko"
+		[ -f "$OUTM/goodix_ts.ko" ] && cp -f "$OUTM/goodix_ts.ko" "$OUTM/goodix_ts_9896.ko"
+	fi
 done
 echo "techpacks built: $ok, failed: $bad; modules in $OUTM: $(ls $OUTM/*.ko 2>/dev/null | wc -l)"
 [ "$bad" -eq 0 ]

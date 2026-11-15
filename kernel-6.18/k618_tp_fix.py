@@ -8504,6 +8504,7 @@ def main(argv):
     apply_sm6225_camera_fixes(Path(root))
     apply_sm6225_securemsm_fixes(Path(root))
     apply_sm6225_rmnet_fixes(Path(root))
+    apply_sm6225_touch_fixes(Path(root))
     return 0
 
 
@@ -9187,6 +9188,54 @@ def apply_sm6225_rmnet_fixes(tp_root: Path) -> None:
             src = src.replace("#define TRACE_INCLUDE_PATH ../../../../vendor/qcom/opensource/datarmnet/core", "#define TRACE_INCLUDE_PATH .")
             trc.write_text(src, encoding="utf-8")
             print("k618_tp_fix: datarmnet/core/rmnet_trace.h (TRACE_INCLUDE_PATH .)")
+
+
+def apply_sm6225_touch_fixes(tp_root: Path) -> None:
+    # 1. touch-drivers/Kbuild: strip leading ./ from object file paths
+    kbuild = tp_root / "touch-drivers/Kbuild"
+    if kbuild.is_file():
+        src = kbuild.read_text(encoding="utf-8", errors="ignore")
+        src_new = re.sub(r"(\s)\./", r"\1", src)
+        if src_new != src:
+            kbuild.write_text(src_new, encoding="utf-8")
+            print("k618_tp_fix: touch-drivers/Kbuild (strip leading ./)")
+
+    # 2. touch-drivers/ft3418_i2c/focaltech_gesture.c: define is_dt2w_sensor and is_st2w_sensor
+    ft_gest = tp_root / "touch-drivers/ft3418_i2c/focaltech_gesture.c"
+    if ft_gest.is_file():
+        src = ft_gest.read_text(encoding="utf-8", errors="ignore")
+        if "extern bool is_dt2w_sensor;" in src:
+            src = src.replace("extern bool is_dt2w_sensor;", "bool is_dt2w_sensor = false;")
+            src = src.replace("extern bool is_st2w_sensor;", "bool is_st2w_sensor = false;")
+            ft_gest.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: touch-drivers/ft3418_i2c/focaltech_gesture.c (define is_dt2w/st2w_sensor)")
+
+    # 3. touch-drivers/goodix_berlin_driver/goodix_ts_core.c: stub qts_client_register
+    gx_core = tp_root / "touch-drivers/goodix_berlin_driver/goodix_ts_core.c"
+    if gx_core.is_file():
+        src = gx_core.read_text(encoding="utf-8", errors="ignore")
+        if "qts_client_register" in src and "int __attribute__((weak)) qts_client_register" not in src:
+            target = "static void goodix_ts_fill_qts_vendor_data(struct qts_vendor_data *qts_vendor_data,"
+            stub = (
+                "int __attribute__((weak)) qts_client_register(struct qts_vendor_data qts_vendor_data)\n"
+                "{\n"
+                "\treturn -ENODEV;\n"
+                "}\n\n"
+                + target
+            )
+            src = src.replace(target, stub, 1)
+            gx_core.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: touch-drivers/goodix_berlin_driver/goodix_ts_core.c (weak qts_client_register)")
+
+    # 4. touch-drivers: replace <asm/unaligned.h> with <linux/unaligned.h>
+    for p in tp_root.glob("touch-drivers/**/*.[ch]"):
+        try:
+            txt = p.read_text(encoding="utf-8", errors="ignore")
+            if "<asm/unaligned.h>" in txt:
+                p.write_text(txt.replace("<asm/unaligned.h>", "<linux/unaligned.h>"), encoding="utf-8")
+                print(f"k618_tp_fix: {p.relative_to(tp_root)} (asm/unaligned.h -> linux/unaligned.h)")
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
