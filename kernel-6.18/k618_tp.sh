@@ -140,6 +140,7 @@ REPOS=(
 # once a preceding media layer passes its compile gate.
 if [ "${TAPAS_OPLUS:-0}" = 1 ]; then
 	REPOS=(
+		"mmrm|mmrm-driver|MMRM_ROOT=%D CONFIG_MSM_MMRM=m CONFIG_ARCH_KHAJE=y|%M|-DCONFIG_ARCH_KHAJE=1"
 		"display|display-drivers|DISPLAY_ROOT=%D CONFIG_DRM_MSM=m CONFIG_ARCH_KHAJE=y CONFIG_DRM_OPLUS=n CONFIG_DRM_OPLUS_NOTIFY=n|%T/securemsm-kernel/include %T/securemsm-kernel/include/linux %T/mm-drivers/msm_ext_display/include|-DCONFIG_ARCH_KHAJE=1 -DCONFIG_DRM_MSM=1"
 		"graphics|graphics-kernel|KGSL_PATH=%D CONFIG_ARCH_KHAJE=y CONFIG_QCOM_KGSL=m CONFIG_ARM_SMMU=m|%M|-DCONFIG_ARCH_KHAJE=1 -DCONFIG_QCOM_KGSL=1 -DCONFIG_ARM_SMMU=1"
 		"camera|camera-kernel|CAMERA_KERNEL_ROOT=%D KERNEL_ROOT=%W/common MODNAME=camera CONFIG_ARCH_KHAJE=y CONFIG_ARCH_BENGAL=y|%T/securemsm-kernel/include %T/securemsm-kernel/include/linux|-DCONFIG_ARCH_KHAJE=1 -DCONFIG_ARCH_BENGAL=1"
