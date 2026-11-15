@@ -194,6 +194,7 @@ awk -v arch="CONFIG_ARCH_$TP_ARCH" '/^#ifndef CONFIG_ARCH_/ && $2 != arch { skip
      /^#ifndef CONFIG_MSM_TMECOM_QMP(_MODULE)?$/ { skip = 3 }
      /^#ifndef CONFIG_QCOM_WCD_USBSS_I2C(_MODULE)?$/ { skip = 3 }
      /^#ifndef CONFIG_QCOM_DCVS(_MODULE)?$/ { skip = 3 }
+     /^#ifndef CONFIG_QCOM_CX_IPEAK(_MODULE)?$/ { skip = 3 }
      /^#ifndef CONFIG_QCOM_VA_MINIDUMP(_MODULE)?$/ { skip = 3 }
      /^#ifndef CONFIG_QCOM_LLCC(_MODULE)?$/ { skip = 3 }
      /^#ifndef CONFIG_QCOM_COMMAND_DB(_MODULE)?$/ { skip = 3 }
@@ -220,6 +221,46 @@ cat >> $TPCONF <<'EOF'
 #undef CONFIG_OPLUS_FEATURE_DISPLAY
 #undef OPLUS_ARCH_EXTENDS
 #undef CONFIG_OPLUS_ARCH_EXTENDS
+#undef CONFIG_QCOM_CX_IPEAK
+#undef CONFIG_QCOM_CX_IPEAK_MODULE
+#undef OPLUS_FEATURE_CAMERA_COMMON
+#undef CONFIG_OPLUS_FEATURE_CAMERA_COMMON
+#undef CONFIG_SPECTRA_OPLUS
+struct gpio {
+	unsigned int	gpio;
+	unsigned long	flags;
+	const char	*label;
+};
+#include <linux/of.h>
+#include <linux/of_gpio.h>
+static inline int of_gpio_count(const struct device_node *np)
+{
+	return of_count_phandle_with_args(np, "gpios", "#gpio-cells");
+}
+static inline int of_get_gpio(const struct device_node *np, int index)
+{
+	return of_get_named_gpio(np, "gpios", index);
+}
+static inline void gpio_free_array(const struct gpio *array, size_t num)
+{
+	size_t i;
+	for (i = 0; i < num; i++)
+		gpio_free(array[i].gpio);
+}
+#include <linux/string.h>
+static inline size_t k618_strlcpy(char *dest, const char *src, size_t size)
+{
+	size_t len = strlen(src);
+	if (size) {
+		size_t copy = (len >= size) ? size - 1 : len;
+		memcpy(dest, src, copy);
+		dest[copy] = '\0';
+	}
+	return len;
+}
+#ifndef strlcpy
+#define strlcpy k618_strlcpy
+#endif
 #include <linux/delay.h>
 #include <linux/iosys-map.h>
 #define dma_buf_map iosys_map
@@ -446,7 +487,7 @@ for entry in "${REPOS[@]}"; do
 	# wrapper passes them, and calling make directly does not
 	TP_UFLAGS=""
 	if [ "${TP_ARCH:-}" = "KHAJE" ] || [ "${TAPAS_OPLUS:-0}" = "1" ]; then
-		TP_UFLAGS="-UCONFIG_QCOM_DCVS -UCONFIG_QCOM_DCVS_MODULE -UCONFIG_QCOM_VA_MINIDUMP -UCONFIG_QCOM_VA_MINIDUMP_MODULE -UCONFIG_QCOM_LLCC -UCONFIG_QCOM_LLCC_MODULE -UCONFIG_QCOM_COMMAND_DB -UCONFIG_QCOM_COMMAND_DB_MODULE -UCONFIG_MSM_PERFORMANCE -UCONFIG_MSM_PERFORMANCE_MODULE -UCONFIG_QCOM_PANEL_EVENT_NOTIFIER -UCONFIG_QCOM_PANEL_EVENT_NOTIFIER_MODULE -UOPLUS_FEATURE_DISPLAY -UCONFIG_OPLUS_FEATURE_DISPLAY -UOPLUS_ARCH_EXTENDS -UCONFIG_OPLUS_ARCH_EXTENDS -Wno-incompatible-function-pointer-types"
+		TP_UFLAGS="-UCONFIG_QCOM_DCVS -UCONFIG_QCOM_DCVS_MODULE -UCONFIG_QCOM_CX_IPEAK -UCONFIG_QCOM_CX_IPEAK_MODULE -UCONFIG_QCOM_VA_MINIDUMP -UCONFIG_QCOM_VA_MINIDUMP_MODULE -UCONFIG_QCOM_LLCC -UCONFIG_QCOM_LLCC_MODULE -UCONFIG_QCOM_COMMAND_DB -UCONFIG_QCOM_COMMAND_DB_MODULE -UCONFIG_MSM_PERFORMANCE -UCONFIG_MSM_PERFORMANCE_MODULE -UCONFIG_QCOM_PANEL_EVENT_NOTIFIER -UCONFIG_QCOM_PANEL_EVENT_NOTIFIER_MODULE -UOPLUS_FEATURE_DISPLAY -UCONFIG_OPLUS_FEATURE_DISPLAY -UOPLUS_ARCH_EXTENDS -UCONFIG_OPLUS_ARCH_EXTENDS -UOPLUS_FEATURE_CAMERA_COMMON -UCONFIG_OPLUS_FEATURE_CAMERA_COMMON -UCONFIG_SPECTRA_OPLUS -Wno-incompatible-function-pointer-types"
 	fi
 	make -C $W/common O=$O ARCH=arm64 LLVM=1 LLVM_IAS=1 M=$D modules -j$J \
 		KERNEL_SRC=$W/common KERNEL_ROOT=$W/common \

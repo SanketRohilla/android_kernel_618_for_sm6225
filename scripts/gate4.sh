@@ -29,7 +29,7 @@ SM6225_DONOR="$topaz" SM6225_COMPAT=1 SM6225_DAILY="${SM6225_DAILY:-0}" \
 stock_targets=$(python3 -I "$PROJECT_ROOT/kernel-6.18/k618_soc_stock_select.py" \
   "$soc" "$PROJECT_ROOT/provenance/tapas-vendor-boot-modules.load" \
   "$PROJECT_ROOT/provenance/module-name-map-sm6225.json")
-stock_targets="$stock_targets drivers/remoteproc/qcom_q6v5_pas drivers/soc/qcom/qfprom-sys drivers/soc/qcom/fsa4480_i2c"
+stock_targets="$stock_targets drivers/remoteproc/qcom_q6v5_pas drivers/soc/qcom/qfprom-sys drivers/soc/qcom/fsa4480_i2c drivers/leds/leds-qti-flash"
 if [ -n "$stock_targets" ]; then
   configs=configs/canoe_perf.bzl,k618_sm6225_overrides.bzl,k618_sm6225_compat.bzl
   [ "${SM6225_DAILY:-0}" != 1 ] || configs=$configs,k618_sm6225_daily.bzl

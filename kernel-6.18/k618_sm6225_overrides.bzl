@@ -13,4 +13,6 @@ k618_sm6225_overrides_config = {
     # Qualcomm's 5.15 WALT cannot be built against 6.18 scheduler internals.
     "CONFIG_SCHED_WALT": "n",
     "CONFIG_ARM_QCOM_CPUFREQ_HW": "m",
+    "CONFIG_QTI_BATTERY_CHARGER": "n",
+    "CONFIG_LEDS_QTI_FLASH": "m",
 }

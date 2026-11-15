@@ -1133,7 +1133,7 @@ EDITS += [
      "\tstruct cam_soc_bus_client_common_data *common_data, bool use_path_name)\n"
      "{\n\tstruct cam_soc_bus_client *bus_client = NULL;"),
     ("camera-kernel/drivers/cam_utils/cam_soc_icc.c",
-     "void cam_soc_bus_client_unregister(void **client)\n{",
+     "/* k618-kalama-only */\nvoid cam_soc_bus_client_unregister(void **client)\n{",
      "/*\n"
      " * k618: 5.15 devicetrees keep an AXI port's interconnects in its qcom,axi-port-mnoc child and\n"
      " * have no cam-icc-path-names; >= 6.5 can only get a path by name from the device's own node.\n"
@@ -8477,6 +8477,8 @@ def main(argv):
         if n:
             print(f"k618_tp_fix: {repo}: {old} -> {new} in {n} files")
     for rel, old, new in ((e[0], e[1], e[2]) for e in EDITS):
+        if "cam_sensor_module/cam_ois/" in rel:
+            continue
         path = os.path.join(root, rel)
         if not os.path.exists(path):
             alt_rel = rel.replace("video-driver-515/", "video-driver/")
@@ -8499,6 +8501,7 @@ def main(argv):
         done += 1
     print(f"k618_tp_fix: {done} of {len(EDITS)} edits applied (the rest were already there)")
     apply_sm6225_media_fixes(Path(root))
+    apply_sm6225_camera_fixes(Path(root))
     return 0
 
 
@@ -8955,6 +8958,83 @@ def apply_sm6225_media_fixes(tp_root: Path) -> None:
         if modified:
             sde_enc.write_text("".join(out_lines), encoding="utf-8")
             print("k618_tp_fix: display-drivers/msm/sde/sde_encoder.c (oplus guards)")
+
+
+def apply_sm6225_camera_fixes(tp_root: Path) -> None:
+    # 1. camera-kernel/config/holi.mk: Clean Qualcomm spectra config for SM6225
+    holi_mk = tp_root / "camera-kernel/config/holi.mk"
+    if holi_mk.is_file():
+        src = holi_mk.read_text(encoding="utf-8", errors="ignore")
+        src_new = src.replace("CONFIG_SPECTRA_OPLUS := y", "CONFIG_SPECTRA_OPLUS := n")
+        src_new = src_new.replace("OPLUS_FEATURE_CAMERA_COMMON := y", "OPLUS_FEATURE_CAMERA_COMMON := n")
+        src_new = src_new.replace("CONFIG_CAMERA_FLASH_PWM := y", "CONFIG_CAMERA_FLASH_PWM := n")
+        src_new = src_new.replace("CONFIG_LEDS_QPNP_FLASH_V2 := y", "CONFIG_LEDS_QTI_FLASH := y")
+        src_new = src_new.replace("ccflags-y += -DCONFIG_SPECTRA_OPLUS=1\n", "")
+        src_new = src_new.replace("ccflags-y += -DOPLUS_FEATURE_CAMERA_COMMON=1\n", "")
+        src_new = src_new.replace("ccflags-y += -DCONFIG_CAMERA_FLASH_PWM=1\n", "")
+        src_new = src_new.replace("ccflags-y += -DCONFIG_LEDS_QPNP_FLASH_V2=1", "ccflags-y += -DCONFIG_LEDS_QTI_FLASH=1")
+        if src_new != src:
+            holi_mk.write_text(src_new, encoding="utf-8")
+            print("k618_tp_fix: camera-kernel/config/holi.mk (sm6225 holi.mk overrides)")
+
+    # 2. camera-kernel/drivers/cam_utils/cam_cx_ipeak.h: Static inline stubs when CONFIG_QCOM_CX_IPEAK is disabled
+    cx_ipeak_h = tp_root / "camera-kernel/drivers/cam_utils/cam_cx_ipeak.h"
+    if cx_ipeak_h.is_file():
+        src = cx_ipeak_h.read_text(encoding="utf-8", errors="ignore")
+        if "#if IS_ENABLED(CONFIG_QCOM_CX_IPEAK)" not in src:
+            stub = (
+                "#if IS_ENABLED(CONFIG_QCOM_CX_IPEAK)\n"
+                "int cam_cx_ipeak_register_cx_ipeak(struct cam_hw_soc_info *soc_info);\n"
+                "int cam_cx_ipeak_update_vote_cx_ipeak(struct cam_hw_soc_info *soc_info,\n"
+                "\tint32_t apply_level);\n"
+                "int cam_cx_ipeak_unvote_cx_ipeak(struct cam_hw_soc_info *soc_info);\n"
+                "#else\n"
+                "static inline int cam_cx_ipeak_register_cx_ipeak(struct cam_hw_soc_info *soc_info)\n"
+                "{\n\treturn 0;\n}\n"
+                "static inline int cam_cx_ipeak_update_vote_cx_ipeak(struct cam_hw_soc_info *soc_info,\n"
+                "\tint32_t apply_level)\n"
+                "{\n\treturn 0;\n}\n"
+                "static inline int cam_cx_ipeak_unvote_cx_ipeak(struct cam_hw_soc_info *soc_info)\n"
+                "{\n\treturn 0;\n}\n"
+                "#endif /* CONFIG_QCOM_CX_IPEAK */\n"
+            )
+            src_new = re.sub(
+                r"int cam_cx_ipeak_register_cx_ipeak\(.*?\);\s*"
+                r"int cam_cx_ipeak_update_vote_cx_ipeak\(.*?\);\s*"
+                r"int cam_cx_ipeak_unvote_cx_ipeak\(.*?\);",
+                stub,
+                src,
+                flags=re.DOTALL,
+            )
+            if src_new != src:
+                cx_ipeak_h.write_text(src_new, encoding="utf-8")
+                print("k618_tp_fix: camera-kernel/drivers/cam_utils/cam_cx_ipeak.h (cx_ipeak stubs)")
+
+    # 3. camera-kernel/drivers/camera_main.c: Import DMA_BUF namespace
+    cam_main = tp_root / "camera-kernel/drivers/camera_main.c"
+    if cam_main.is_file():
+        src = cam_main.read_text(encoding="utf-8", errors="ignore")
+        if 'MODULE_IMPORT_NS("DMA_BUF");' not in src:
+            src += '\nMODULE_IMPORT_NS("DMA_BUF");\n'
+            cam_main.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: camera-kernel/drivers/camera_main.c (DMA_BUF import)")
+
+    # 4. camera-kernel/drivers/cam_sensor_module/cam_eeprom/cam_eeprom_dev.c: Guard OPlus QVGA
+    cam_eeprom = tp_root / "camera-kernel/drivers/cam_sensor_module/cam_eeprom/cam_eeprom_dev.c"
+    if cam_eeprom.is_file():
+        src = cam_eeprom.read_text(encoding="utf-8", errors="ignore")
+        if "static struct eeprom_memory_map_init_write_params sc080cs_init_settings" in src:
+            if "#ifdef OPLUS_FEATURE_CAMERA_COMMON" not in src:
+                src = src.replace(
+                    "static struct eeprom_memory_map_init_write_params sc080cs_init_settings",
+                    "#ifdef OPLUS_FEATURE_CAMERA_COMMON\nstatic struct eeprom_memory_map_init_write_params sc080cs_init_settings"
+                )
+                src = src.replace(
+                    "write_setting_to_sensor(s_data, &sc080cs_init_settings);\n\t}\n}",
+                    "write_setting_to_sensor(s_data, &sc080cs_init_settings);\n\t}\n}\n#endif /* OPLUS_FEATURE_CAMERA_COMMON */"
+                )
+                cam_eeprom.write_text(src, encoding="utf-8")
+                print("k618_tp_fix: camera-kernel/drivers/cam_sensor_module/cam_eeprom/cam_eeprom_dev.c (oplus qvga guard)")
 
 
 if __name__ == "__main__":
