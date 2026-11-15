@@ -8503,6 +8503,7 @@ def main(argv):
     apply_sm6225_media_fixes(Path(root))
     apply_sm6225_camera_fixes(Path(root))
     apply_sm6225_securemsm_fixes(Path(root))
+    apply_sm6225_rmnet_fixes(Path(root))
     return 0
 
 
@@ -9110,6 +9111,82 @@ def apply_sm6225_securemsm_fixes(tp_root: Path) -> None:
             if "<linux/dma-iommu.h>" in src:
                 fpath.write_text(src.replace("<linux/dma-iommu.h>", "<linux/iommu.h>"), encoding="utf-8")
                 print(f"k618_tp_fix: securemsm-kernel/{rel} (dma-iommu.h -> iommu.h)")
+
+
+def apply_sm6225_rmnet_fixes(tp_root: Path) -> None:
+    # 1. datarmnet/core/dfc.h: semicolons after __assign_str
+    dfc_h = tp_root / "datarmnet/core/dfc.h"
+    if dfc_h.is_file():
+        src = dfc_h.read_text(encoding="utf-8", errors="ignore")
+        src_new = src.replace("__assign_str(dev_name)\n", "__assign_str(dev_name);\n")
+        src_new = src_new.replace("__assign_str(cmd_str)\n", "__assign_str(cmd_str);\n")
+        if src_new != src:
+            dfc_h.write_text(src_new, encoding="utf-8")
+            print("k618_tp_fix: datarmnet/core/dfc.h (__assign_str semicolons)")
+
+    # 2. datarmnet/core/rmnet_ll_ipa.c: wrap under !CONFIG_ARCH_KHAJE
+    ll_ipa = tp_root / "datarmnet/core/rmnet_ll_ipa.c"
+    if ll_ipa.is_file():
+        src = ll_ipa.read_text(encoding="utf-8", errors="ignore")
+        if "#if !defined(__arch_um__)" in src and "!defined(CONFIG_ARCH_KHAJE)" not in src:
+            src = src.replace("#if !defined(__arch_um__)", "#if !defined(__arch_um__) && !defined(CONFIG_ARCH_KHAJE)")
+            ll_ipa.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: datarmnet/core/rmnet_ll_ipa.c (KHAJE stubs)")
+
+    # 3. datarmnet/core/rmnet_ctl_ipa.c: stub ipa callbacks on KHAJE
+    ctl_ipa = tp_root / "datarmnet/core/rmnet_ctl_ipa.c"
+    if ctl_ipa.is_file():
+        src = ctl_ipa.read_text(encoding="utf-8", errors="ignore")
+        if "#ifdef CONFIG_ARCH_KHAJE" not in src:
+            stub = (
+                "#ifdef CONFIG_ARCH_KHAJE\n"
+                "static inline int ipa_register_ipa_ready_cb(void (*cb)(void *), void *data) { return -ENODEV; }\n"
+                "static inline int ipa_register_rmnet_ctl_cb(void *a, void *b, void *c, void *d, void *e, void *f) { return -ENODEV; }\n"
+                "static inline void ipa_unregister_rmnet_ctl_cb(void) {}\n"
+                "static inline int ipa_rmnet_ctl_xmit(struct sk_buff *skb) { return -ENODEV; }\n"
+                "#else\n"
+                "#include <linux/ipa.h>\n"
+                "#endif"
+            )
+            src = src.replace("#include <linux/ipa.h>", stub)
+            ctl_ipa.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: datarmnet/core/rmnet_ctl_ipa.c (KHAJE ipa stubs)")
+
+    # 4. datarmnet/core/rmnet_handlers.c: dev_core_stats_rx_nohandler_inc
+    hand = tp_root / "datarmnet/core/rmnet_handlers.c"
+    if hand.is_file():
+        src = hand.read_text(encoding="utf-8", errors="ignore")
+        if "atomic_long_inc(&skb->dev->rx_nohandler);" in src:
+            src = src.replace("atomic_long_inc(&skb->dev->rx_nohandler);", "dev_core_stats_rx_nohandler_inc(skb->dev);")
+            hand.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: datarmnet/core/rmnet_handlers.c (rx_nohandler)")
+
+    # 5. datarmnet/core/rmnet_map_data.c: bv_offset -> skb_frag_off & MAX_SKB_FRAGS
+    map_data = tp_root / "datarmnet/core/rmnet_map_data.c"
+    if map_data.is_file():
+        src = map_data.read_text(encoding="utf-8", errors="ignore")
+        modified = False
+        if "frag0->bv_offset" in src:
+            src = src.replace("frag0->bv_offset", "skb_frag_off(frag0)")
+            modified = True
+        if "packet_len);\n\t\tskbn->data_len +=" in src:
+            src = src.replace("packet_len);\n\t\tskbn->data_len +=", "packet_len, MAX_SKB_FRAGS);\n\t\tskbn->data_len +=")
+            modified = True
+        if "copy_len);\n\t\tdest->data_len +=" in src:
+            src = src.replace("copy_len);\n\t\tdest->data_len +=", "copy_len, MAX_SKB_FRAGS);\n\t\tdest->data_len +=")
+            modified = True
+        if modified:
+            map_data.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: datarmnet/core/rmnet_map_data.c (bv_offset & MAX_SKB_FRAGS)")
+
+    # 6. datarmnet/core/rmnet_trace.h: TRACE_INCLUDE_PATH .
+    trc = tp_root / "datarmnet/core/rmnet_trace.h"
+    if trc.is_file():
+        src = trc.read_text(encoding="utf-8", errors="ignore")
+        if "#define TRACE_INCLUDE_PATH ../../../../vendor/qcom/opensource/datarmnet/core" in src:
+            src = src.replace("#define TRACE_INCLUDE_PATH ../../../../vendor/qcom/opensource/datarmnet/core", "#define TRACE_INCLUDE_PATH .")
+            trc.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: datarmnet/core/rmnet_trace.h (TRACE_INCLUDE_PATH .)")
 
 
 if __name__ == "__main__":

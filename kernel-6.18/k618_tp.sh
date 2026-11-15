@@ -141,6 +141,8 @@ REPOS=(
 if [ "${TAPAS_OPLUS:-0}" = 1 ]; then
 	REPOS=(
 		"securemsm|securemsm-kernel|SSG_MODULE_ROOT=%D CONFIG_DISABLE_TEST_MODULES=y CONFIG_ARCH_KHAJE=y|%T/securemsm-kernel/include %T/securemsm-kernel/include/linux|-DCONFIG_ARCH_KHAJE=1"
+		"rmnet_core|datarmnet/core|RMNET_CORE_ROOT=%D CONFIG_ARCH_KHAJE=y|%R|-DCONFIG_ARCH_KHAJE=1"
+		"rmnet_wlan|datarmnet-ext/wlan|RMNET_CORE_INC_DIR=%T/datarmnet/core CONFIG_ARCH_KHAJE=y|%R|-DCONFIG_ARCH_KHAJE=1"
 		"mmrm|mmrm-driver|MMRM_ROOT=%D CONFIG_MSM_MMRM=m CONFIG_ARCH_KHAJE=y|%M|-DCONFIG_ARCH_KHAJE=1"
 		"display|display-drivers|DISPLAY_ROOT=%D CONFIG_DRM_MSM=m CONFIG_ARCH_KHAJE=y CONFIG_DRM_OPLUS=n CONFIG_DRM_OPLUS_NOTIFY=n|%T/securemsm-kernel/include %T/securemsm-kernel/include/linux %T/mm-drivers/msm_ext_display/include|-DCONFIG_ARCH_KHAJE=1 -DCONFIG_DRM_MSM=1"
 		"graphics|graphics-kernel|KGSL_PATH=%D CONFIG_ARCH_KHAJE=y CONFIG_QCOM_KGSL=m CONFIG_ARM_SMMU=m|%M|-DCONFIG_ARCH_KHAJE=1 -DCONFIG_QCOM_KGSL=1 -DCONFIG_ARM_SMMU=1"
@@ -268,6 +270,29 @@ static inline size_t k618_strlcpy(char *dest, const char *src, size_t size)
 #include <linux/proc_fs.h>
 #ifndef PDE_DATA
 #define PDE_DATA(i) pde_data(i)
+#endif
+#include <linux/u64_stats_sync.h>
+#ifndef u64_stats_fetch_begin_irq
+#define u64_stats_fetch_begin_irq(syncp) u64_stats_fetch_begin(syncp)
+#endif
+#ifndef u64_stats_fetch_retry_irq
+#define u64_stats_fetch_retry_irq(syncp, start) u64_stats_fetch_retry(syncp, start)
+#endif
+#include <linux/skbuff.h>
+static inline void k618_skb_frag_set_page(skb_frag_t *frag, struct page *page)
+{
+	frag->netmem = page_to_netmem(page);
+}
+#ifndef __skb_frag_set_page
+#define __skb_frag_set_page(frag, page) k618_skb_frag_set_page(frag, page)
+#endif
+#ifndef skb_frag_set_page
+#define skb_frag_set_page(frag, page) k618_skb_frag_set_page(frag, page)
+#endif
+#include <net/gso.h>
+#include <linux/etherdevice.h>
+#ifndef random_ether_addr
+#define random_ether_addr(addr) eth_random_addr(addr)
 #endif
 #include <linux/delay.h>
 #include <linux/iosys-map.h>
