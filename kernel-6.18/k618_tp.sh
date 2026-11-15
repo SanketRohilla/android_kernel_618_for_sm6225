@@ -263,6 +263,10 @@ static inline void gpio_free_array(const struct gpio *array, size_t num)
 	for (i = 0; i < num; i++)
 		gpio_free(array[i].gpio);
 }
+static inline void devm_gpio_free(struct device *dev, unsigned int gpio)
+{
+	gpio_free(gpio);
+}
 #include <linux/string.h>
 static inline size_t k618_strlcpy(char *dest, const char *src, size_t size)
 {

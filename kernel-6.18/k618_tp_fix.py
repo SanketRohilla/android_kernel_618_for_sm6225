@@ -8505,6 +8505,7 @@ def main(argv):
     apply_sm6225_securemsm_fixes(Path(root))
     apply_sm6225_rmnet_fixes(Path(root))
     apply_sm6225_touch_fixes(Path(root))
+    apply_sm6225_audio_fixes(Path(root))
     return 0
 
 
@@ -9236,6 +9237,33 @@ def apply_sm6225_touch_fixes(tp_root: Path) -> None:
                 print(f"k618_tp_fix: {p.relative_to(tp_root)} (asm/unaligned.h -> linux/unaligned.h)")
         except Exception:
             pass
+
+
+def apply_sm6225_audio_fixes(tp_root: Path) -> None:
+    # 1. audio-kernel/asoc/codecs/aw87xxx/aw87xxx.c: wrap snd_soc_unregister_component
+    aw = tp_root / "audio-kernel/asoc/codecs/aw87xxx/aw87xxx.c"
+    if aw.is_file():
+        src = aw.read_text(encoding="utf-8", errors="ignore")
+        old_block = (
+            "static struct aw_componet_codec_ops aw_componet_codec_ops = {\n"
+            "\t.add_codec_controls = snd_soc_add_component_controls,\n"
+            "\t.unregister_codec = snd_soc_unregister_component,\n"
+            "};"
+        )
+        replacement = (
+            "static void aw87xxx_unregister_codec(struct device *dev)\n"
+            "{\n"
+            "\tsnd_soc_unregister_component(dev);\n"
+            "}\n"
+            "static struct aw_componet_codec_ops aw_componet_codec_ops = {\n"
+            "\t.add_codec_controls = snd_soc_add_component_controls,\n"
+            "\t.unregister_codec = aw87xxx_unregister_codec,\n"
+            "};"
+        )
+        if old_block in src:
+            src = src.replace(old_block, replacement)
+            aw.write_text(src, encoding="utf-8")
+            print("k618_tp_fix: audio-kernel/asoc/codecs/aw87xxx/aw87xxx.c (unregister_codec wrapper)")
 
 
 if __name__ == "__main__":
