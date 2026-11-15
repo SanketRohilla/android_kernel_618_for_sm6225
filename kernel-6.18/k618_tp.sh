@@ -217,6 +217,8 @@ cat >> $TPCONF <<'EOF'
 #define DRM_PANEL_EVENT_FOR_TOUCH 5
 #undef OPLUS_FEATURE_DISPLAY
 #undef CONFIG_OPLUS_FEATURE_DISPLAY
+#undef OPLUS_ARCH_EXTENDS
+#undef CONFIG_OPLUS_ARCH_EXTENDS
 #include <linux/delay.h>
 #include <linux/iosys-map.h>
 #define dma_buf_map iosys_map
@@ -251,6 +253,56 @@ static inline struct dma_fence *k618_dma_resv_get_excl(struct dma_resv *resv)
 #define drm_bridge_chain_enable(b) drm_atomic_bridge_chain_enable((b), old_state)
 #ifndef SOCINFO_FC_UNKNOWN
 #define SOCINFO_FC_UNKNOWN 0
+#endif
+#ifndef soc_multi_mixer_control
+#define soc_multi_mixer_control soc_mixer_control
+#endif
+#ifndef SOC_SINGLE_MULTI_EXT
+#define SOC_SINGLE_MULTI_EXT(xname, xreg, xshift, xmax, xinvert, xcount, xhandler_get, xhandler_put) \
+{	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
+	.info = snd_soc_info_volsw, \
+	.get = xhandler_get, .put = xhandler_put, \
+	.private_value = (unsigned long)&(struct soc_mixer_control) \
+		{.reg = xreg, .rreg = xreg, .shift = xshift, .rshift = xshift, \
+		 .max = xmax, .platform_max = xmax, .invert = xinvert} }
+#endif
+#include <linux/of.h>
+static inline ssize_t k618_of_modalias(const struct device_node *np, char *str, ssize_t len)
+{
+	const char *compat;
+	struct property *p;
+	ssize_t csize, tsize;
+
+	if ((len > 0 && !str) || len < 0)
+		return -EINVAL;
+
+	csize = snprintf(str, len, "of:N%pOFn%c%s", np, 'T',
+			 of_node_get_device_type(np));
+	tsize = csize;
+	if (csize >= len)
+		csize = len > 0 ? len - 1 : 0;
+	len -= csize;
+	str += csize;
+
+	of_property_for_each_string(np, "compatible", p, compat) {
+		char *c;
+		csize = snprintf(str, len, "C%s", compat);
+		tsize += csize;
+		if (csize >= len)
+			continue;
+		for (c = str; c; ) {
+			c = strchr(c, ' ');
+			if (c)
+				*c++ = '_';
+		}
+		len -= csize;
+		str += csize;
+	}
+
+	return tsize;
+}
+#ifndef of_modalias
+#define of_modalias(np, str, len) k618_of_modalias((np), (str), (len))
 #endif
 EOF
 [ -f "$S/include/stdarg.h" ] || echo "#include <linux/stdarg.h>" > "$S/include/stdarg.h"
@@ -393,7 +445,7 @@ for entry in "${REPOS[@]}"; do
 	# wrapper passes them, and calling make directly does not
 	TP_UFLAGS=""
 	if [ "${TP_ARCH:-}" = "KHAJE" ] || [ "${TAPAS_OPLUS:-0}" = "1" ]; then
-		TP_UFLAGS="-UCONFIG_QCOM_DCVS -UCONFIG_QCOM_DCVS_MODULE -UCONFIG_QCOM_VA_MINIDUMP -UCONFIG_QCOM_VA_MINIDUMP_MODULE -UCONFIG_QCOM_LLCC -UCONFIG_QCOM_LLCC_MODULE -UCONFIG_QCOM_COMMAND_DB -UCONFIG_QCOM_COMMAND_DB_MODULE -UCONFIG_MSM_PERFORMANCE -UCONFIG_MSM_PERFORMANCE_MODULE -UCONFIG_QCOM_PANEL_EVENT_NOTIFIER -UCONFIG_QCOM_PANEL_EVENT_NOTIFIER_MODULE -UOPLUS_FEATURE_DISPLAY -UCONFIG_OPLUS_FEATURE_DISPLAY"
+		TP_UFLAGS="-UCONFIG_QCOM_DCVS -UCONFIG_QCOM_DCVS_MODULE -UCONFIG_QCOM_VA_MINIDUMP -UCONFIG_QCOM_VA_MINIDUMP_MODULE -UCONFIG_QCOM_LLCC -UCONFIG_QCOM_LLCC_MODULE -UCONFIG_QCOM_COMMAND_DB -UCONFIG_QCOM_COMMAND_DB_MODULE -UCONFIG_MSM_PERFORMANCE -UCONFIG_MSM_PERFORMANCE_MODULE -UCONFIG_QCOM_PANEL_EVENT_NOTIFIER -UCONFIG_QCOM_PANEL_EVENT_NOTIFIER_MODULE -UOPLUS_FEATURE_DISPLAY -UCONFIG_OPLUS_FEATURE_DISPLAY -UOPLUS_ARCH_EXTENDS -UCONFIG_OPLUS_ARCH_EXTENDS -Wno-incompatible-function-pointer-types"
 	fi
 	make -C $W/common O=$O ARCH=arm64 LLVM=1 LLVM_IAS=1 M=$D modules -j$J \
 		KERNEL_SRC=$W/common KERNEL_ROOT=$W/common \

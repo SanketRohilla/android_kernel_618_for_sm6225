@@ -6209,6 +6209,288 @@ EDITS += [
      "\t/* [9] is NULL terminator */\n\n"
      "\tpl_info_lnx->sysctl_header =\n"
      "\t\tregister_sysctl_sz(path, pl_info_lnx->sysctls, 9);\n"),
+    ("audio-kernel/config/bengalautoconf.h",
+     "#define OPLUS_ARCH_EXTENDS 1\n"
+     "/* add for HS_G */\n"
+     "#define CONFIG_OPLUS_HS_G_DET 1\n",
+     "/* OPLUS_ARCH_EXTENDS disabled for tapas */\n"),
+    ("audio-kernel/include/asoc/wcd-mbhc-v2.h",
+     "#ifndef OPLUS_ARCH_EXTENDS\n"
+     "/* Add for OPLUS MACRO */\n"
+     "#define OPLUS_ARCH_EXTENDS\n"
+     "#endif /* OPLUS_ARCH_EXTENDS */\n",
+     "/* OPLUS_ARCH_EXTENDS disabled for tapas */\n"),
+    ("audio-kernel/dsp/msm_audio_ion.c",
+     "MODULE_LICENSE(\"GPL v2\");\n",
+     "MODULE_LICENSE(\"GPL v2\");\nMODULE_IMPORT_NS(\"DMA_BUF\");\n"),
+    ("audio-kernel/Kbuild",
+     "#Add for oplus audio extends driver\n"
+     "obj-y += oplus/\n"
+     "#endif /* OPLUS_ARCH_EXTENDS */\n",
+     "# oplus audio extends omitted for tapas\n"),
+    ("audio-kernel/asoc/Kbuild",
+     "#ifdef OPLUS_ARCH_EXTENDS\n"
+     "#Add for audio extend driver\n"
+     "\t\t-include $(AUDIO_ROOT)/oplus/config/oplusbengalauto.conf\n"
+     "\t\texport\n"
+     "\t\tINCS    +=  -include $(AUDIO_ROOT)/oplus/config/oplusbengalautoconf.h\n"
+     "#endif /* OPLUS_ARCH_EXTENDS */\n",
+     "# OPLUS_ARCH_EXTENDS omitted for tapas\n"),
+    ("audio-kernel/dsp/audio_pdr.c",
+     "\tif (domain_id == AUDIO_PDR_DOMAIN_ADSP)\n"
+     "\t\treturn pdr_add_service_lookup(audio_pdr_services[domain_id].pdr_handle,\n"
+     "\t\t\t      audio_pdr_services[domain_id].service_name,\n"
+     "\t\t\t      audio_pdr_services[domain_id].service_path);\n"
+     "\telse\n"
+     "\t\treturn pdr_add_lookup(audio_pdr_services[domain_id].pdr_handle,\n"
+     "\t\t\t      audio_pdr_services[domain_id].service_name,\n"
+     "\t\t\t      audio_pdr_services[domain_id].service_path);\n",
+     "\treturn pdr_add_lookup(audio_pdr_services[domain_id].pdr_handle,\n"
+     "\t\t\t      audio_pdr_services[domain_id].service_name,\n"
+     "\t\t\t      audio_pdr_services[domain_id].service_path);\n"),
+    ("audio-kernel/dsp/spf-core.c",
+     "#include <linux/of_platform.h>\n",
+     "#include <linux/of_platform.h>\n#include <linux/platform_device.h>\n"),
+    ("audio-kernel/dsp/spf-core.c",
+     "static int spf_core_platform_driver_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\t//snd_event_client_deregister(&pdev->dev);\n"
+     "        gpr_driver_unregister(&qcom_spf_core_driver);\n"
+     "\tspf_core_priv = NULL;\n"
+     "    digital_cdc_rsc_mgr_exit();\n"
+     "\treturn 0;\n"
+     "}\n",
+     "static void spf_core_platform_driver_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\t//snd_event_client_deregister(&pdev->dev);\n"
+     "        gpr_driver_unregister(&qcom_spf_core_driver);\n"
+     "\tspf_core_priv = NULL;\n"
+     "    digital_cdc_rsc_mgr_exit();\n"
+     "}\n"),
+    ("audio-kernel/ipc/gpr-lite.c",
+     "static int gpr_device_match(struct device *dev, struct device_driver *drv)\n",
+     "static int gpr_device_match(struct device *dev, const struct device_driver *drv)\n"),
+    ("audio-kernel/ipc/gpr-lite.c",
+     "static int gpr_uevent(struct device *dev, struct kobj_uevent_env *env)\n"
+     "{\n"
+     "\tstruct gpr_device *adev = to_gpr_device(dev);\n",
+     "static int gpr_uevent(const struct device *dev, struct kobj_uevent_env *env)\n"
+     "{\n"
+     "\tconst struct gpr_device *adev = to_gpr_device(dev);\n"),
+    ("audio-kernel/ipc/audio-pkt.c",
+     "\tskb = alloc_skb(pkt_size, GFP_ATOMIC);\n"
+     "\tif (!skb) {\n"
+     "#ifndef OPLUS_ARCH_EXTENDS\n"
+     "/* Add for implement backup buffers queue for skb allocation. CR3958702 */\n"
+     "\t\tdev_err(&adev->dev, \"%s: alloc_skb failed, pkt_size = 0x%x\\n\",\n"
+     "\t\t\t__func__, pkt_size);\n"
+     "\t\treturn -ENOMEM;\n"
+     "\t}\n"
+     "#else /* OPLUS_ARCH_EXTENDS */\n",
+     "\tskb = alloc_skb(pkt_size, GFP_ATOMIC);\n"
+     "\tif (!skb) {\n"
+     "#ifndef OPLUS_ARCH_EXTENDS\n"
+     "/* Add for implement backup buffers queue for skb allocation. CR3958702 */\n"
+     "\t\tdev_err(&adev->dev, \"%s: alloc_skb failed, pkt_size = 0x%x\\n\",\n"
+     "\t\t\t__func__, pkt_size);\n"
+     "\t\treturn -ENOMEM;\n"
+     "#else /* OPLUS_ARCH_EXTENDS */\n"),
+    ("audio-kernel/soc/pinctrl-lpi.c",
+     "static int lpi_pinctrl_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tstruct lpi_gpio_state *state = platform_get_drvdata(pdev);\n\n"
+     "\tpm_runtime_disable(&pdev->dev);\n"
+     "\tpm_runtime_set_suspended(&pdev->dev);\n\n"
+     "\tsnd_event_client_deregister(&pdev->dev);\n"
+     "\taudio_notifier_deregister(\"lpi_tlmm\");\n"
+     "\tgpiochip_remove(&state->chip);\n"
+     "\tmutex_destroy(&state->core_hw_vote_lock);\n"
+     "\tmutex_destroy(&state->slew_access_lock);\n\n"
+     "\treturn 0;\n"
+     "}\n",
+     "static void lpi_pinctrl_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tstruct lpi_gpio_state *state = platform_get_drvdata(pdev);\n\n"
+     "\tpm_runtime_disable(&pdev->dev);\n"
+     "\tpm_runtime_set_suspended(&pdev->dev);\n\n"
+     "\tsnd_event_client_deregister(&pdev->dev);\n"
+     "\taudio_notifier_deregister(\"lpi_tlmm\");\n"
+     "\tgpiochip_remove(&state->chip);\n"
+     "\tmutex_destroy(&state->core_hw_vote_lock);\n"
+     "\tmutex_destroy(&state->slew_access_lock);\n"
+     "}\n"),
+    ("audio-kernel/dsp/adsp-loader.c",
+     "static int adsp_loader_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tstruct adsp_loader_private *priv = NULL;\n\n"
+     "\tpriv = platform_get_drvdata(pdev);\n\n"
+     "\tif (!priv)\n"
+     "\t\treturn 0;\n\n"
+     "\tif (priv->pil_h) {\n"
+     "\t\trproc_shutdown(priv->pil_h);\n"
+     "\t\tpriv->pil_h = NULL;\n"
+     "\t}\n\n"
+     "\tif (priv->boot_adsp_obj) {\n"
+     "\t\tsysfs_remove_group(priv->boot_adsp_obj, priv->attr_group);\n"
+     "\t\tkobject_del(priv->boot_adsp_obj);\n"
+     "\t\tpriv->boot_adsp_obj = NULL;\n"
+     "\t}\n\n"
+     "\treturn 0;\n"
+     "}\n",
+     "static void adsp_loader_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tstruct adsp_loader_private *priv = NULL;\n\n"
+     "\tpriv = platform_get_drvdata(pdev);\n\n"
+     "\tif (!priv)\n"
+     "\t\treturn;\n\n"
+     "\tif (priv->pil_h) {\n"
+     "\t\trproc_shutdown(priv->pil_h);\n"
+     "\t\tpriv->pil_h = NULL;\n"
+     "\t}\n\n"
+     "\tif (priv->boot_adsp_obj) {\n"
+     "\t\tsysfs_remove_group(priv->boot_adsp_obj, priv->attr_group);\n"
+     "\t\tkobject_del(priv->boot_adsp_obj);\n"
+     "\t\tpriv->boot_adsp_obj = NULL;\n"
+     "\t}\n"
+     "}\n"),
+    ("audio-kernel/dsp/audio_notifier.c",
+     "static int audio_notifier_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tblocking_notifier_chain_unregister(&service_notifier_list,\n"
+     "\t\t\t\t\t&audio_notifier_nb);\n"
+     "\treturn 0;\n"
+     "}\n",
+     "static void audio_notifier_remove(struct platform_device *pdev)\n"
+     "{\n"
+     "\tblocking_notifier_chain_unregister(&service_notifier_list,\n"
+     "\t\t\t\t\t&audio_notifier_nb);\n"
+     "}\n"),
+    ("audio-kernel/asoc/msm_common.c",
+     "\tstruct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);\n",
+     "\tstruct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);\n"),
+    ("audio-kernel/asoc/msm_common.c",
+     "\t\tcodec_dai = asoc_rtd_to_codec(rtd, i);\n",
+     "\t\tcodec_dai = snd_soc_rtd_to_codec(rtd, i);\n"),
+    ("audio-kernel/asoc/msm_common.c",
+     "\tint stream_dir = rtd->num;\n",
+     "\tint stream_dir = rtd->id;\n"),
+    ("audio-kernel/asoc/msm_common.c",
+     "\tfor (i = 0; i < rtd->num_codecs; i++) {\n",
+     "\tfor (i = 0; i < rtd->dai_link->num_codecs; i++) {\n"),
+    ("audio-kernel/asoc/msm_common.c",
+     "#include <linux/of_gpio.h>\n",
+     "#include <linux/of_gpio.h>\n#include <linux/cpu.h>\n"),
+    ("audio-kernel/soc/soundwire.c",
+     "\tchar *modalias;\n\n"
+     "\tmodalias = kzalloc(sizeof(char) * SOUNDWIRE_NAME_SIZE, GFP_KERNEL);\n"
+     "\tif (!modalias)\n"
+     "\t\treturn -ENOMEM;\n"
+     "\trc = of_modalias_node(node, modalias, SOUNDWIRE_NAME_SIZE);\n",
+     "\tchar modalias[SOUNDWIRE_NAME_SIZE] = {0};\n\n"
+     "\trc = of_modalias(node, modalias, sizeof(modalias));\n"),
+    ("audio-kernel/soc/soundwire.c",
+     "\tif (!rc)\n"
+     "\t\tstrlcpy(info->type, modalias, SOUNDWIRE_NAME_SIZE);\n"
+     "\tkfree(modalias);\n",
+     "\tif (!rc)\n"
+     "\t\tstrscpy(info->type, modalias, SOUNDWIRE_NAME_SIZE);\n"),
+    ("audio-kernel/soc/soundwire.c",
+     "\tif (soundwire_type.p)\n"
+     "\t\tbus_unregister(&soundwire_type);\n",
+     "\tbus_unregister(&soundwire_type);\n"),
+    ("audio-kernel/dsp/msm_audio_ion.c",
+     "#include <linux/dma-buf-map.h>\n",
+     "#include <linux/iosys-map.h>\n#define dma_buf_map iosys_map\n"),
+    ("audio-kernel/asoc/codecs/wsa881x-temp-sensor.c",
+     "\ttz_dev = thermal_zone_device_register(tz_pdata->name,\n"
+     "\t\t\t\t0, 0, tz_pdata,\n"
+     "\t\t\t\t&wsa881x_thermal_ops, NULL, 0, 0);\n",
+     "\ttz_dev = thermal_tripless_zone_device_register(tz_pdata->name,\n"
+     "\t\t\t\ttz_pdata, &wsa881x_thermal_ops, NULL);\n"),
+    ("audio-kernel/asoc/codecs/wsa881x-temp-sensor.c",
+     "void wsa881x_deinit_thermal(struct thermal_zone_device *tz_dev)\n"
+     "{\n"
+     "\tstruct wsa881x_tz_priv *pdata;\n\n"
+     "\tif (tz_dev && tz_dev->devdata) {\n"
+     "\t\tpdata = tz_dev->devdata;\n"
+     "\t\tif (pdata)\n"
+     "\t\t\tunregister_pm_notifier(&pdata->pm_nb);\n"
+     "\t}\n"
+     "\tif (tz_dev)\n"
+     "\t\tthermal_zone_device_unregister(tz_dev);\n"
+     "}\n",
+     "void wsa881x_deinit_thermal(struct thermal_zone_device *tz_dev)\n"
+     "{\n"
+     "\tstruct wsa881x_tz_priv *pdata;\n\n"
+     "\tif (tz_dev) {\n"
+     "\t\tpdata = thermal_zone_device_priv(tz_dev);\n"
+     "\t\tif (pdata)\n"
+     "\t\t\tunregister_pm_notifier(&pdata->pm_nb);\n"
+     "\t\tthermal_zone_device_unregister(tz_dev);\n"
+     "\t}\n"
+     "}\n"),
+    ("audio-kernel/asoc/codecs/bolero/va-macro.c",
+     "\tstruct soc_multi_mixer_control *mixer =\n"
+     "\t\t((struct soc_multi_mixer_control *)kcontrol->private_value);\n",
+     "\tstruct soc_mixer_control *mixer =\n"
+     "\t\t((struct soc_mixer_control *)kcontrol->private_value);\n"),
+    ("audio-kernel/dsp/msm_audio_ion.c",
+     "static enum vmid msm_audio_map_mdf_domain(int domain) {\n",
+     "#include <linux/firmware/qcom/qcom_scm.h>\n\n"
+     "#ifndef VMID_ADSP_Q6\n#define VMID_ADSP_Q6 0x6\n#endif\n"
+     "#ifndef VMID_SSC_Q6\n#define VMID_SSC_Q6 0x5\n#endif\n\n"
+     "static inline int k618_hyp_assign_phys(phys_addr_t addr, u64 size, u32 *source_vm_list,\n"
+     "\t\tint source_nelems, int *dest_vmids, int *dest_perms, int dest_nelems)\n"
+     "{\n"
+     "\tstruct qcom_scm_vmperm dst[8];\n"
+     "\tu64 src = 0;\n"
+     "\tint i;\n\n"
+     "\tif (dest_nelems > (int)ARRAY_SIZE(dst))\n"
+     "\t\treturn -EINVAL;\n"
+     "\tfor (i = 0; i < source_nelems; i++)\n"
+     "\t\tsrc |= BIT_ULL(source_vm_list[i]);\n"
+     "\tfor (i = 0; i < dest_nelems; i++) {\n"
+     "\t\tdst[i].vmid = dest_vmids[i];\n"
+     "\t\tdst[i].perm = dest_perms[i];\n"
+     "\t}\n"
+     "\treturn qcom_scm_assign_mem(addr, size, &src, dst, dest_nelems);\n"
+     "}\n"
+     "#ifndef hyp_assign_phys\n"
+     "#define hyp_assign_phys(a, s, svl, sn, dv, dp, dn) \\\n"
+     "\tk618_hyp_assign_phys((a), (s), (svl), (sn), (dv), (dp), (dn))\n"
+     "#endif\n\n"
+     "static enum vmid msm_audio_map_mdf_domain(int domain) {\n"),
+    ("audio-kernel/asoc/codecs/bolero/tx-macro.c",
+     "\tstruct soc_multi_mixer_control *mixer =\n"
+     "\t\t((struct soc_multi_mixer_control *)kcontrol->private_value);\n",
+     "\tstruct soc_mixer_control *mixer =\n"
+     "\t\t((struct soc_mixer_control *)kcontrol->private_value);\n"),
+    ("audio-kernel/asoc/codecs/wcd937x/wcd937x.c",
+     "\t.mask_writeonly = 1,\n"
+     "\t.type_base = WCD937X_DIGITAL_INTR_LEVEL_0,\n",
+     "\t/* k618: mask_writeonly / type_base not in 6.18 regmap */\n"),
+    ("audio-kernel/asoc/codecs/wcd937x/wcd937x.c",
+     "\tmc = (struct soc_multi_mixer_control *)(kcontrol->private_value);\n",
+     "\tmc = (struct soc_mixer_control *)(kcontrol->private_value);\n"),
+    ("audio-kernel/asoc/codecs/rouleur/rouleur.c",
+     "\t.type_base = ROULEUR_DIG_SWR_INTR_LEVEL_0,\n",
+     "\t/* k618: type_base not in 6.18 regmap */\n"),
+    ("audio-kernel/asoc/codecs/wcd-mbhc-v2.c",
+     "\t\tret = snd_soc_card_jack_new(component->card,\n"
+     "\t\t\t\t\t    \"Headset Jack\", WCD_MBHC_JACK_MASK,\n"
+     "\t\t\t\t\t    &mbhc->headset_jack, NULL, 0);\n",
+     "\t\tret = snd_soc_card_jack_new(component->card,\n"
+     "\t\t\t\t\t    \"Headset Jack\", WCD_MBHC_JACK_MASK,\n"
+     "\t\t\t\t\t    &mbhc->headset_jack);\n"),
+    ("audio-kernel/asoc/codecs/wcd-mbhc-v2.c",
+     "\t\tret = snd_soc_card_jack_new(component->card,\n"
+     "\t\t\t\t\t    \"Button Jack\",\n"
+     "\t\t\t\t\t    WCD_MBHC_JACK_BUTTON_MASK,\n"
+     "\t\t\t\t\t    &mbhc->button_jack, NULL, 0);\n",
+     "\t\tret = snd_soc_card_jack_new(component->card,\n"
+     "\t\t\t\t\t    \"Button Jack\",\n"
+     "\t\t\t\t\t    WCD_MBHC_JACK_BUTTON_MASK,\n"
+     "\t\t\t\t\t    &mbhc->button_jack);\n"),
 ]
 
 
