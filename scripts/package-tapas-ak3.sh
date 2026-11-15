@@ -32,25 +32,29 @@ cp "$IMAGE" "$w/ak3/Image"
 MOD_DIR="$w/ak3/modules/vendor_dlkm/lib/modules"
 mkdir -p "$MOD_DIR"
 
+STRIP="$K618/ws/prebuilts/clang/host/linux-x86/clang-r584948c/bin/llvm-strip"
+[ -x "$STRIP" ] || STRIP=$(command -v llvm-strip || command -v aarch64-linux-gnu-strip || echo "true")
+
 # Collect all compiled techpack modules
 if [ -d "$K618/tpmods" ]; then
     echo "Adding techpack modules from $K618/tpmods..."
-    find "$K618/tpmods" -name "*.ko" -exec cp -v {} "$MOD_DIR/" \;
+    find "$K618/tpmods" -name "*.ko" -exec cp {} "$MOD_DIR/" \;
 fi
 
 # Collect all compiled SoC modules
 if [ -d "$K618/soc" ]; then
     echo "Adding SoC modules from $K618/soc..."
-    find "$K618/soc" -name "*.ko" -exec cp -v {} "$MOD_DIR/" \;
+    find "$K618/soc" -name "*.ko" -exec cp {} "$MOD_DIR/" \;
 fi
 
-# Duplicate to vendor/lib/modules for vendor partition compatibility
-mkdir -p "$w/ak3/modules/vendor/lib/modules"
-cp -r "$MOD_DIR"/* "$w/ak3/modules/vendor/lib/modules/"
+# Strip debug symbols from all modules (reduces uncompressed size from 420MB+ down to ~39MB)
+echo "Stripping debug symbols from modules..."
+for mod in "$MOD_DIR"/*.ko; do
+    "$STRIP" --strip-debug "$mod" 2>/dev/null || true
+done
 
 # Generate modules.load
 (cd "$MOD_DIR" && ls *.ko > modules.load)
-cp "$MOD_DIR/modules.load" "$w/ak3/modules/vendor/lib/modules/modules.load"
 
 TOTAL_MODS=$(ls -1 "$MOD_DIR"/*.ko | wc -l)
 echo "Total modules packaged: $TOTAL_MODS"
