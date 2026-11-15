@@ -20,7 +20,7 @@ git -C "$soc" reset -q --hard HEAD
 git -C "$soc" clean -fdxq
 SM6225_GATE2=1 SM6225_GATE3=1 bash "$PROJECT_ROOT/kernel-6.18/k618_gki.sh" "${JOBS:-4}"
 SM6225_DONOR="$topaz" SM6225_COMPAT=1 SM6225_DAILY="${SM6225_DAILY:-0}" \
-  SM6225_POWER="${SM6225_POWER:-0}" \
+  SM6225_POWER="${SM6225_POWER:-1}" \
   bash "$PROJECT_ROOT/kernel-6.18/k618_tapas_base.sh" "${JOBS:-4}"
 
 # The earlier gates deliberately requested only the minimal Khaje set. Build
